@@ -1,0 +1,126 @@
+<UserControl x:Class="DiskAnalyze.Views.CircularDiagramView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:local="clr-namespace:DiskAnalyze.Views"
+             xmlns:converters="clr-namespace:DiskAnalyze.Converters"
+             xmlns:viewModels="clr-namespace:DiskAnalyze.ViewModels"
+             mc:Ignorable="d"
+             d:DesignHeight="450" d:DesignWidth="800">
+
+    <UserControl.Resources>
+        <converters:InvertibleBooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <converters:ScaleMagnifierConverter x:Key="ScaleMagnifierConverter" />
+        <converters:FileSystemEntityToBrushConverter x:Key="FileSystemEntityToBrushConverter" />
+        <converters:FileSizeConverter x:Key="FileSizeConverter" />
+        <converters:BooleanToGridLengthConverter x:Key="BooleanToGridLengthConverter" />
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="{Binding HasContents, Converter={StaticResource BooleanToGridLengthConverter}, ConverterParameter=220}" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Navigation Controls -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="10">
+            <Button Content="↑ Up" Width="60" Margin="0,0,10,0"
+                    Command="{Binding NavigateUpCommand}"
+                    Visibility="{Binding CanNavigateUp, Converter={StaticResource BooleanToVisibilityConverter}}" />
+            <TextBlock Text="{Binding CurrentPath}" VerticalAlignment="Center" />
+        </StackPanel>
+
+        <!-- Diagram Area -->
+        <Grid Grid.Row="1">
+            <Viewbox Stretch="Uniform" Margin="20">
+                <Canvas Width="400" Height="400">
+                    <!-- Circular Diagram Canvas -->
+                    <Canvas x:Name="CircularDiagramCanvas" Width="400" Height="400">
+                        <!-- Central Circle -->
+                        <Ellipse Width="100" Height="100" Fill="LightGray" Canvas.Left="150" Canvas.Top="150" />
+                        <TextBlock Text="{Binding CurrentDirectory.Name}" TextWrapping="Wrap" TextAlignment="Center"
+                                   Canvas.Left="155" Canvas.Top="170" Width="90" Height="60" />
+
+                        <!-- Sectors will be drawn here by the ItemsControl -->
+                        <ItemsControl ItemsSource="{Binding DisplayedEntities}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <Canvas />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type viewModels:FileSystemEntityViewModel}">
+                                    <Canvas>
+                                        <Canvas.RenderTransform>
+                                            <ScaleTransform
+                                                ScaleX="{Binding IsHovered, Converter={StaticResource ScaleMagnifierConverter}, ConverterParameter=1.1}"
+                                                ScaleY="{Binding IsHovered, Converter={StaticResource ScaleMagnifierConverter}, ConverterParameter=1.1}"
+                                                CenterX="200" CenterY="200" />
+                                        </Canvas.RenderTransform>
+
+                                        <!-- Sector Path -->
+                                        <Path x:Name="SectorPath" Fill="{Binding Converter={StaticResource FileSystemEntityToBrushConverter}}"
+                                              Stroke="White" StrokeThickness="1"
+                                              Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                                            <Path.ContextMenu>
+                                                <ContextMenu>
+                                                    <MenuItem Header="Show contents"
+                                                              Command="{Binding PlacementTarget.Tag.ShowContentsCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                              CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                                    <MenuItem Header="Show in Explorer"
+                                                              Command="{Binding PlacementTarget.Tag.ShowInExplorerCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                              CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                              Visibility="{Binding PlacementTarget.DataContext.IsOtherCategory, RelativeSource={RelativeSource AncestorType=ContextMenu}, Converter={StaticResource BooleanToVisibilityConverter}, ConverterParameter=Invert}" />
+                                                </ContextMenu>
+                                            </Path.ContextMenu>
+                                            <Path.Data>
+                                                <PathGeometry>
+                                                    <PathGeometry.Figures>
+                                                        <PathFigure StartPoint="200,200">
+                                                            <PathFigure.Segments>
+                                                                <LineSegment Point="{Binding ArcStartPoint}" />
+                                                                <ArcSegment Size="150,150" SweepDirection="Clockwise"
+                                                                            IsLargeArc="{Binding IsLargeArc}"
+                                                                            Point="{Binding ArcEndPoint}" />
+                                                                <LineSegment Point="200,200" />
+                                                            </PathFigure.Segments>
+                                                        </PathFigure>
+                                                    </PathGeometry.Figures>
+                                                </PathGeometry>
+                                            </Path.Data>
+                                        </Path>
+
+                                        <!-- Name Label -->
+                                        <TextBlock Text="{Binding DisplayName}" TextWrapping="Wrap" TextAlignment="Center"
+                                                   Canvas.Left="{Binding LabelX}" Canvas.Top="{Binding LabelY}"
+                                                   Width="60" Height="40" />
+
+                                        <!-- Size Info on Hover -->
+                                        <Border Background="White" BorderBrush="Black" BorderThickness="1" CornerRadius="3"
+                                                Visibility="{Binding IsHovered, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                Canvas.Left="{Binding TooltipX}" Canvas.Top="{Binding TooltipY}">
+                                            <StackPanel Margin="5">
+                                                <TextBlock Text="{Binding Name}" FontWeight="Bold" />
+                                                <TextBlock Text="{Binding Size, Converter={StaticResource FileSizeConverter}}" />
+                                                <TextBlock Text="{Binding UsageInfo}" Foreground="#555"
+                                                           Visibility="{Binding IsDrive, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                            </StackPanel>
+                                        </Border>
+                                    </Canvas>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Canvas>
+                </Canvas>
+            </Viewbox>
+        </Grid>
+
+        <!-- Contents Side Panel -->
+        <local:SegmentContentsView Grid.Row="0" Grid.RowSpan="2" Grid.Column="1" />
+    </Grid>
+</UserControl>

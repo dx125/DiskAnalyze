@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.13.35507.96
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DiskAnalyze", "DiskAnalyze\DiskAnalyze.csproj", "{061702FD-F073-4417-A2C3-D1571E7BB01D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DiskAnalyze.Application", "DiskAnalyze.Application\DiskAnalyze.Application.csproj", "{C1597D71-3CE7-4D51-B495-48767556B8EA}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{061702FD-F073-4417-A2C3-D1571E7BB01D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{061702FD-F073-4417-A2C3-D1571E7BB01D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{061702FD-F073-4417-A2C3-D1571E7BB01D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{061702FD-F073-4417-A2C3-D1571E7BB01D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C1597D71-3CE7-4D51-B495-48767556B8EA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C1597D71-3CE7-4D51-B495-48767556B8EA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C1597D71-3CE7-4D51-B495-48767556B8EA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C1597D71-3CE7-4D51-B495-48767556B8EA}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {7471ED52-64FB-4FDC-9749-72D61AB346CC}
+	EndGlobalSection
+EndGlobal

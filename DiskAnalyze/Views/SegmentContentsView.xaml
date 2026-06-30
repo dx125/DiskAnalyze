@@ -1,0 +1,52 @@
+<UserControl x:Class="DiskAnalyze.Views.SegmentContentsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:converters="clr-namespace:DiskAnalyze.Converters"
+             xmlns:viewModels="clr-namespace:DiskAnalyze.ViewModels"
+             mc:Ignorable="d"
+             d:DesignHeight="450" d:DesignWidth="220">
+
+    <UserControl.Resources>
+        <converters:InvertibleBooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <converters:FileSizeConverter x:Key="FileSizeConverter" />
+    </UserControl.Resources>
+
+    <Border BorderBrush="#DDD" BorderThickness="1,0,0,0"
+            Visibility="{Binding HasContents, Converter={StaticResource BooleanToVisibilityConverter}}">
+        <Grid Margin="8">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Text="{Binding ContentsTitle}" FontWeight="Bold"
+                       TextWrapping="Wrap" Margin="0,0,0,8" />
+
+            <ListBox Grid.Row="1" ItemsSource="{Binding SegmentContents}"
+                     BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ItemTemplate>
+                    <DataTemplate DataType="{x:Type viewModels:FileSystemEntityViewModel}">
+                        <Grid Margin="0,2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Grid.Column="0" Text="{Binding Name}" TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding FullPath}" />
+                            <TextBlock Grid.Column="1" Text="{Binding Size, Converter={StaticResource FileSizeConverter}}"
+                                       Margin="8,0,0,0" Foreground="#555" />
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Grid>
+    </Border>
+</UserControl>
