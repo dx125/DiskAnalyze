@@ -9,6 +9,8 @@ and record non-obvious choices in the Decision Log.
 - **Goal:** personal tool. Usability, speed and useful features come before release engineering
   (installer, signing, auto-update). See D-018.
 - **Stack:** C# / WPF / MVVM (hand-rolled), `net10.0` + `net10.0-windows`; xUnit tests.
+- **Machine-specific notes:** `machine.local.json` at the repo root, git-ignored. Hardware, drives,
+  local folder stats and benchmarks go there, never into this public file (D-027).
 - **Build / run / test:**
   ```
   dotnet build DiskAnalyze.sln
@@ -64,7 +66,8 @@ Composition root: `MainWindow` constructor (no DI container).
 | 2026-06-11 | `fac6e25` | Repository created (MIT license only). |
 | 2026-06-30 | `6661c76` | Whole application landed in one commit (≈2.5k lines): parallel scanner, pie and bar diagrams with drill-down, "Other" bucket, hover tooltips, segment-contents side panel, drive usage %, two-folder duplicate finder. The commit message describes only the final UI fixes: diagram hidden while loading, side-panel column collapses to zero width when empty, "Show in Explorer" context menu. Earlier iterations are not in git. |
 | 2026-11-14 | `8b91848` | Project review; this document created. Planned two features: folder content types (§6.1) and a photo browser with content filters (§6.2, feasibility analysis). |
-| 2026-11-14 | `01928cf` | Review fixes (developed on branch `review-fixes`, fast-forwarded into `main`). Retargeted to .NET 10. Fixed I-1–I-4, I-6, I-8, I-10, I-11, I-13–I-17; partly fixed I-9 and I-12 (§4). New: scan target picker, Rescan, Cancel, live progress, OneDrive support, 27 xUnit tests, README. Smoke-tested in the running app: a full scan of all fixed drives (≈1.3 TB) took 22 s cold and 5 s warm. |
+| 2026-11-14 | `01928cf` | Review fixes (developed on branch `review-fixes`, fast-forwarded into `main`). Retargeted to .NET 10. Fixed I-1–I-4, I-6, I-8, I-10, I-11, I-13–I-17; partly fixed I-9 and I-12 (§4). New: scan target picker, Rescan, Cancel, live progress, OneDrive support, 27 xUnit tests, README. Smoke-tested in the running app (benchmarks in `machine.local.json`). |
+| 2026-11-14 | — | Machine-specific details moved to the git-ignored `machine.local.json`. Designed the capability gate for photo analysis (§6.3, D-027); Feature B steps renumbered (the gate is B2). Added a scan-error summary to the roadmap. |
 
 ---
 
@@ -117,7 +120,7 @@ this file's git history.
   - "Not scanned" reported NTFS metadata on an empty 4 TB drive. The threshold is now relative to capacity (D-025).
 
 ### Partly fixed
-- **I-9. Scanned vs. used gap.** Drive rows and tooltips show "N GB not scanned". Still open: dedicated "Free" and "Not scanned" segments in the diagrams; a "Restart as administrator" action.
+- **I-9. Scanned vs. used gap.** Drive rows and tooltips show "N GB not scanned". Still open: dedicated "Free" and "Not scanned" segments in the diagrams; a "Restart as administrator" action. Besides access rights, the gap can come from I/O errors: a flaky external drive timing out on reads (`ERROR_SEM_TIMEOUT`) looks the same today, which the scan-error summary (roadmap Next) will tell apart.
 - **I-12. Duplicates view limits.** Done: cancel, progress, summary (groups, files, reclaimable bytes), reveal A or B in Explorer. Still open: reuse the loaded tree instead of rescanning, duplicates *within* one folder, delete actions (Duplicates v2).
 
 ### Open
@@ -147,6 +150,7 @@ unless the goal changes.
 - [ ] Context menu: Open, Copy path, **Delete to Recycle Bin** (with confirmation). Update sizes up the parent chain in place without a rescan.
 - [ ] Drive level: show "Free" and "Not scanned" segments in the diagrams (the "N GB not scanned" text is done, I-9); add a "Restart as administrator" action.
 - [x] Highlight the active view in the toolbar; hide labels for slices under 4% (I-13).
+- [ ] **Scan-error summary.** Count folders that couldn't be read, grouped by cause: access denied vs. I/O errors such as `ERROR_SEM_TIMEOUT` on a failing USB drive. Show it in the status bar and the drive tooltip, with a list of affected paths. Today errors only reach Debug output (D-006).
 
 ### Feature A — Folder content types (design: §6.1)
 Shows what each folder mostly holds: images, video, audio, documents, archives, code, apps, mixed.
@@ -160,9 +164,15 @@ Shows what each folder mostly holds: images, video, audio, documents, archives, 
 A separate window for viewing photos, with filters such as sunsets, people, city, documents and screenshots. Analysis runs locally.
 - [ ] **B0. Spike** (console app, about one evening). Run a CLIP ViT-B/32 image encoder on ONNX Runtime with a GPU execution provider over ~500 own photos with ~20 precomputed prompts. Measure throughput and judge precision by eye. Check that Shell thumbnails of cloud-only OneDrive files don't trigger a download.
 - [ ] **B1. Photo window, metadata only.** Virtualized thumbnail grid. Filters: folder scope, EXIF date range, camera, type (photo, screenshot, RAW). Preview with EXIF; actions: Open, Show in Explorer, Copy path, Delete to Recycle Bin. Useful even without ML.
-- [ ] **B2. Content categories.** Background indexing with progress and cancel. SQLite index cache (key: path + size + mtime) stores a CLIP embedding per photo. Fixed categories come from precomputed prompt embeddings, so no tokenizer is needed; category chips show counts.
-- [ ] **B3. Search & similar.** Free-text search ("dog on the beach") using the text encoder and CLIP BPE tokenizer. "Similar photos" groups (bursts, near-duplicates) with reclaimable space, which the SHA-256 duplicate finder can't detect.
-- [ ] **B4. Optional.** Face detector (YuNet/SCRFD, a few MB) for reliable people/portrait/group filters; user-defined categories via a prompt editor; threshold tuning per category.
+- [ ] **B2. Capability gate** (§6.3). At startup, in the background:
+  - Detect GPUs (via DXGI), ONNX Runtime execution providers and whether the model is present; probe-run one inference.
+  - Decide whether CLIP on ONNX Runtime is allowed and available, and on which execution provider; decide whether photo content analysis is on.
+  - Settings `ClipOnnx` (Auto/Allow/Deny), `ExecutionProvider` and `PhotoContentAnalysis` (Auto/Enabled/Disabled); developer override from `machine.local.json`.
+  - The photo window shows the active mode and, when off, the reason.
+  - The decision logic is a pure function with table-driven unit tests.
+- [ ] **B3. Content categories.** Background indexing with progress and cancel. SQLite index cache (key: path + size + mtime) stores a CLIP embedding per photo. Fixed categories come from precomputed prompt embeddings, so no tokenizer is needed; category chips show counts.
+- [ ] **B4. Search & similar.** Free-text search ("dog on the beach") using the text encoder and CLIP BPE tokenizer. "Similar photos" groups (bursts, near-duplicates) with reclaimable space, which the SHA-256 duplicate finder can't detect.
+- [ ] **B5. Optional.** Face detector (YuNet/SCRFD, a few MB) for reliable people/portrait/group filters; user-defined categories via a prompt editor; threshold tuning per category.
 
 ### Later — analysis features
 - [ ] **Largest files** flat list across the whole tree, with size/extension/age filters.
@@ -255,9 +265,9 @@ under 10 ms.
 1. **Source.** Image files from the existing scan tree (extensions), or a folder chosen in the photo window.
 2. **Input pixels: Windows Shell thumbnails** (`IShellItemImageFactory`, 256 px; CLIP needs 224 px). They are fast thanks to the OS thumbnail cache and cover HEIC/RAW wherever codecs are installed. Most importantly, they work for **cloud-only OneDrive files without downloading the original**; B0 must confirm this. When Pictures is redirected to OneDrive (a common default), most images may be cloud-only, so decoding originals would mean downloading the whole library. Fallback for local files: WIC decode with `DecodePixelWidth` (JPEG DCT scaling).
 3. **Inference.** ONNX Runtime with a GPU execution provider (DirectML, or CUDA on NVIDIA GPUs; Windows ML packaging is another route — decide in B0), CPU fallback, batches of 32–64.
-4. **Text side.** B2 ships precomputed prompt embeddings (JSON generated once), so the app needs no tokenizer. B3 adds the text encoder plus the CLIP BPE tokenizer (`Microsoft.ML.Tokenizers` with vocab and merges files) for free-text search.
+4. **Text side.** B3 ships precomputed prompt embeddings (JSON generated once), so the app needs no tokenizer. B4 adds the text encoder plus the CLIP BPE tokenizer (`Microsoft.ML.Tokenizers` with vocab and merges files) for free-text search.
 5. **Index cache.** SQLite at `%LOCALAPPDATA%\DiskAnalyze\photos.db`, keyed by path + size + mtime. Columns: dimensions, EXIF date, GPS, camera, embedding, face count, category scores. Re-indexing is incremental.
-6. **People (B4, optional).** A small face detector gives a face count and makes people/portrait/group filters more reliable than CLIP alone. Face *recognition* (who) is out of scope for privacy and complexity reasons.
+6. **People (B5, optional).** A small face detector gives a face count and makes people/portrait/group filters more reliable than CLIP alone. Face *recognition* (who) is out of scope for privacy and complexity reasons.
 
 **Estimates (to be confirmed in B0)**
 - Model: ViT-B/32 image encoder ≈ 350 MB fp32, roughly 90–180 MB quantized or fp16. Downloaded on first use, never committed.
@@ -276,6 +286,50 @@ actions.
 - The GPU EP package choice may shift (the DirectML vs. Windows ML direction).
 - HEIC needs the HEIF codec installed.
 - The index holds content embeddings: keep it local in `%LOCALAPPDATA%` and never sync it.
+
+### 6.3 Machine capabilities & feature gating (decided: D-027)
+
+**Two kinds of machine information, kept apart.**
+1. **Developer reference facts**: hardware, drives, local folder stats, benchmarks. They live in `machine.local.json` at the repo root, git-ignored via `*.local.json`. Never in this file, because the repo is public.
+2. **What the app needs at runtime**: detected by the app itself. The repo file isn't next to the exe or on another machine; GPUs and drivers change; and "will the GPU execution provider actually load and run" can only be answered by trying.
+
+**Two switches; the second depends on the first.**
+- **`ClipOnnx`** (Auto / Allow / Deny): may the app load ONNX Runtime and the CLIP model at all. **`ExecutionProvider`** (Auto / DirectML / CUDA / CPU) picks the backend.
+- **`PhotoContentAnalysis`** (Auto / Enabled / Disabled): the content-filter feature itself. It needs `ClipOnnx` to be allowed and available. When it is off, the photo window keeps working with metadata filters (B1), and the content chips show the reason.
+
+**Detection at startup.** Runs in the background after the main window is shown and never delays scanning.
+
+| Check | How | Why this way |
+|---|---|---|
+| GPU adapters | DXGI `EnumAdapters1` → description, vendor, `DedicatedVideoMemory` | Not WMI: `Win32_VideoController.AdapterRAM` is 32-bit and caps at 4 GB, so a 12 GB card reports 4 GB. |
+| ONNX Runtime | Load the native library; list available execution providers | Missing or failing to load → `ClipOnnx` unavailable. |
+| Model | File in `%LOCALAPPDATA%\DiskAnalyze\models`, size and hash check | Missing → offer the download. |
+| Probe | Create a session on the chosen provider, run one dummy batch, time it | Catches driver and provider failures that the availability list misses; gives a real throughput estimate for the UI. |
+| RAM, cores | `GC.GetGCMemoryInfo()`, `Environment.ProcessorCount` | Batch size and parallelism. |
+
+The result is cached in `%LOCALAPPDATA%\DiskAnalyze\machine-profile.json`. It is invalidated when the
+adapter list, driver version or app version changes, so the probe doesn't run on every start.
+
+**Decision in Auto mode**
+
+| Detected | ClipOnnx | PhotoContentAnalysis |
+|---|---|---|
+| Denied in settings | off | off: "disabled in settings" |
+| ONNX Runtime or model missing | unavailable | off; offers the model download |
+| GPU provider probe OK, ≥ 4 GB dedicated VRAM | on, GPU | on |
+| CPU only, probe OK | on, CPU | off by default; the user can enable it, with an estimated indexing time for the library |
+| Probe failed | unavailable | off, with the error as the reason |
+
+Allow/Enabled in settings forces the feature on wherever possible (e.g. CPU fallback).
+
+**Override precedence** (later wins):
+1. Runtime detection.
+2. User settings in `%LOCALAPPDATA%\DiskAnalyze\settings.json`, changed in the UI.
+3. Developer override: the `features` section of `machine.local.json`. The build copies the file next to the exe only when it exists. It lets you simulate "no GPU" or "CLIP denied" on the dev machine without touching hardware.
+
+**Code placement.**
+- `MachineProfile` (detected facts) and `FeatureGate`, a pure function from profile + settings + overrides to decisions, live in the Application layer and are unit-tested table-first.
+- DXGI and ONNX Runtime probing is Windows/native code. It goes in the WPF project, or in a future `DiskAnalyze.Photos` project.
 
 ---
 
@@ -309,7 +363,7 @@ OneDrive cloud folders (I-8).
 
 **D-006 — Inaccessible folders are skipped silently** (2026-06, accepted)
 Errors go only to `Debug.WriteLine`. The resulting gap is now surfaced per drive as "not scanned"
-(D-025).
+(D-025). Revisit: the planned scan-error summary distinguishes access denied from I/O errors.
 
 **D-007 — Directory sizes in a post-pass** (2026-06, accepted)
 `CalculateSize()` runs once after the scan instead of propagating sizes concurrently. Why: no
@@ -405,3 +459,13 @@ Used minus scanned includes NTFS metadata, which grows with volume size: an empt
 .NET 8 left support on 2026-11-10. There is no `global.json`, so any installed SDK ≥ 10 builds the
 solution; newer SDKs, including .NET 11 previews, fetch the .NET 10 reference packs on their own.
 Installing the .NET 10 GA SDK is still recommended. Tests use xUnit 2.9.
+
+**D-027 — Machine facts in a git-ignored file; feature gates from runtime detection** (2026-11-14, accepted for the file, proposed for the gate)
+Machine-specific details (hardware, drives, local folder stats, benchmarks) live in
+`machine.local.json` at the repo root, ignored via `*.local.json`/`*.local.md`. This document is
+public and stays machine-neutral. The app never relies on that file for facts. At startup it detects
+GPUs (DXGI, not WMI), ONNX Runtime execution providers and the model, probe-runs one inference, and
+derives `ClipOnnx` and `PhotoContentAnalysis`. User settings, then the file's `features` section
+(developer override), take precedence over detection. Why: the file is absent next to the exe and on
+other machines, hardware and drivers change, and only a real probe proves the GPU path works.
+Details: §6.3.

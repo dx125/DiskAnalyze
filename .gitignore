@@ -41,6 +41,10 @@ publish/
 *.publishproj
 PublishProfiles/
 
+# Machine-specific notes and local overrides (personal; see DEVELOPMENT.md §6.3)
+*.local.json
+*.local.md
+
 # Misc
 *.swp
 *.bak
