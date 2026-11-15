@@ -1,0 +1,75 @@
+<!--
+    Dark theme colour tokens, palette "Graphite · Cobalt" (DEVELOPMENT.md D-029).
+    Same keys as Colors.Light.xaml. The series colours are the same hues stepped for a dark background,
+    not an automatic inversion.
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Surfaces and lines -->
+    <Color x:Key="Color.Window">#111316</Color>
+    <Color x:Key="Color.Chrome">#181B1F</Color>
+    <Color x:Key="Color.Surface">#1C1F24</Color>
+    <Color x:Key="Color.Band">#212429</Color>
+    <Color x:Key="Color.Hover">#2A2F36</Color>
+    <Color x:Key="Color.Selected">#1D2B4D</Color>
+    <Color x:Key="Color.Line">#2C3138</Color>
+    <Color x:Key="Color.LineStrong">#4A515B</Color>
+    <Color x:Key="Color.Scrim">#E6111316</Color>
+
+    <!-- Text -->
+    <Color x:Key="Color.Text">#E7E9EC</Color>
+    <Color x:Key="Color.TextSecondary">#A9AFB8</Color>
+    <Color x:Key="Color.TextMuted">#7D8590</Color>
+
+    <!-- Accent -->
+    <Color x:Key="Color.Accent">#5B8CFF</Color>
+    <Color x:Key="Color.AccentHover">#7AA2FF</Color>
+    <Color x:Key="Color.AccentPressed">#4A78E6</Color>
+    <Color x:Key="Color.OnAccent">#0B1020</Color>
+
+    <!-- Status -->
+    <Color x:Key="Color.Warning">#FAB219</Color>
+    <Color x:Key="Color.Critical">#D03B3B</Color>
+
+    <!-- Diagram series (validated on dark: adjacent CVD ΔE ≥ 8.4, normal-vision ΔE ≥ 19.3, all ≥ 3:1) -->
+    <Color x:Key="Color.Series0">#3987E5</Color>
+    <Color x:Key="Color.Series1">#D95926</Color>
+    <Color x:Key="Color.Series2">#199E70</Color>
+    <Color x:Key="Color.Series3">#C98500</Color>
+    <Color x:Key="Color.Series4">#D55181</Color>
+    <Color x:Key="Color.Series5">#0CA30C</Color>
+    <Color x:Key="Color.Series6">#9085E9</Color>
+    <Color x:Key="Color.Series7">#E66767</Color>
+    <Color x:Key="Color.Other">#5C636D</Color>
+
+    <Color x:Key="Color.SeriesLabel0">#FFFFFF</Color>
+    <Color x:Key="Color.SeriesLabel1">#FFFFFF</Color>
+    <Color x:Key="Color.SeriesLabel2">#FFFFFF</Color>
+    <Color x:Key="Color.SeriesLabel3">#FFFFFF</Color>
+    <Color x:Key="Color.SeriesLabel4">#FFFFFF</Color>
+    <Color x:Key="Color.SeriesLabel5">#FFFFFF</Color>
+    <Color x:Key="Color.SeriesLabel6">#FFFFFF</Color>
+    <Color x:Key="Color.SeriesLabel7">#FFFFFF</Color>
+    <Color x:Key="Color.OtherLabel">#FFFFFF</Color>
+
+    <SolidColorBrush x:Key="Brush.Window" Color="{StaticResource Color.Window}" />
+    <SolidColorBrush x:Key="Brush.Chrome" Color="{StaticResource Color.Chrome}" />
+    <SolidColorBrush x:Key="Brush.Surface" Color="{StaticResource Color.Surface}" />
+    <SolidColorBrush x:Key="Brush.Band" Color="{StaticResource Color.Band}" />
+    <SolidColorBrush x:Key="Brush.Hover" Color="{StaticResource Color.Hover}" />
+    <SolidColorBrush x:Key="Brush.Selected" Color="{StaticResource Color.Selected}" />
+    <SolidColorBrush x:Key="Brush.Line" Color="{StaticResource Color.Line}" />
+    <SolidColorBrush x:Key="Brush.LineStrong" Color="{StaticResource Color.LineStrong}" />
+    <SolidColorBrush x:Key="Brush.Scrim" Color="{StaticResource Color.Scrim}" />
+    <SolidColorBrush x:Key="Brush.Text" Color="{StaticResource Color.Text}" />
+    <SolidColorBrush x:Key="Brush.TextSecondary" Color="{StaticResource Color.TextSecondary}" />
+    <SolidColorBrush x:Key="Brush.TextMuted" Color="{StaticResource Color.TextMuted}" />
+    <SolidColorBrush x:Key="Brush.Accent" Color="{StaticResource Color.Accent}" />
+    <SolidColorBrush x:Key="Brush.AccentHover" Color="{StaticResource Color.AccentHover}" />
+    <SolidColorBrush x:Key="Brush.AccentPressed" Color="{StaticResource Color.AccentPressed}" />
+    <SolidColorBrush x:Key="Brush.OnAccent" Color="{StaticResource Color.OnAccent}" />
+    <SolidColorBrush x:Key="Brush.Warning" Color="{StaticResource Color.Warning}" />
+    <SolidColorBrush x:Key="Brush.Critical" Color="{StaticResource Color.Critical}" />
+    <SolidColorBrush x:Key="Brush.Other" Color="{StaticResource Color.Other}" />
+</ResourceDictionary>

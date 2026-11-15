@@ -4,7 +4,7 @@ A small Windows disk-usage analyzer (WPF, .NET 10). It shows where your disk spa
 duplicate files.
 
 - **Scan** all fixed drives, one drive, or any folder. Shows live progress and can be cancelled.
-- **Pie view**: the 5 largest items plus "Other". Click a folder to drill in; hover for size and date.
+- **Pie view**: the largest items (5 by default, 3–8 in Settings) plus "Other". Click a folder to drill in; hover for size and date.
 - **Bar view**: every item in the current folder, sized to the window.
 - **Side panel**: the contents of any slice, largest first ("Show contents" in the context menu, or click "Other").
 - **Show in Explorer** from any item.
@@ -13,6 +13,9 @@ duplicate files.
   no local space.
 - **Duplicates** between two folders (also when one is inside the other): content-hashed, with the total
   space you could reclaim.
+- **Light and dark themes**, switched live; "System" follows Windows. Flat, square-cornered UI.
+- **Settings** (gear button): theme, whether and what to scan on startup, pie slice count. Saved to
+  `%LOCALAPPDATA%\DiskAnalyze\settings.json`.
 
 ## Build & run
 

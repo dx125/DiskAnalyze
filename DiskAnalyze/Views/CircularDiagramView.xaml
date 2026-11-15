@@ -5,6 +5,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:local="clr-namespace:DiskAnalyze.Views"
              xmlns:viewModels="clr-namespace:DiskAnalyze.ViewModels"
+             xmlns:services="clr-namespace:DiskAnalyze.Services"
              mc:Ignorable="d"
              d:DesignHeight="450" d:DesignWidth="800">
 
@@ -19,11 +20,14 @@
         </Grid.ColumnDefinitions>
 
         <!-- Navigation Controls -->
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="10">
-            <Button Content="↑ Up" Width="60" Margin="0,0,10,0"
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="10" MinHeight="26">
+            <Button Style="{StaticResource Button.Icon}" Margin="0,0,10,0" ToolTip="Up one level"
+                    AutomationProperties.Name="Up"
                     Command="{Binding NavigateUpCommand}"
-                    Visibility="{Binding CanNavigateUp, Converter={StaticResource BooleanToVisibilityConverter}}" />
-            <TextBlock Text="{Binding CurrentPath}" VerticalAlignment="Center" />
+                    Visibility="{Binding CanNavigateUp, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Path Data="{StaticResource Icon.ChevronUp}" Style="{StaticResource Icon.Stroke}" />
+            </Button>
+            <TextBlock Text="{Binding CurrentPath}" VerticalAlignment="Center" FontWeight="SemiBold" />
         </StackPanel>
 
         <!-- Diagram Area -->
@@ -33,9 +37,9 @@
                     <!-- Circular Diagram Canvas -->
                     <Canvas x:Name="CircularDiagramCanvas" Width="400" Height="400">
                         <!-- Central Circle -->
-                        <Ellipse Width="100" Height="100" Fill="LightGray" Canvas.Left="150" Canvas.Top="150" />
+                        <Ellipse Width="100" Height="100" Fill="{DynamicResource Brush.Surface}" Canvas.Left="150" Canvas.Top="150" />
                         <TextBlock Text="{Binding CurrentDirectory.Name}" TextWrapping="Wrap" TextAlignment="Center"
-                                   Canvas.Left="155" Canvas.Top="170" Width="90" Height="60" />
+                                   FontWeight="SemiBold" Canvas.Left="155" Canvas.Top="170" Width="90" Height="60" />
 
                         <!-- Sectors will be drawn here by the ItemsControl -->
                         <ItemsControl ItemsSource="{Binding DisplayedEntities}">
@@ -54,14 +58,15 @@
                                                 CenterX="200" CenterY="200" />
                                         </Canvas.RenderTransform>
 
-                                        <!-- Sector Path -->
-                                        <Path x:Name="SectorPath" Stroke="White" StrokeThickness="1"
+                                        <!-- Sector Path: the stroke in the background colour leaves a 2 px gap between slices -->
+                                        <Path x:Name="SectorPath" Stroke="{DynamicResource Brush.Window}" StrokeThickness="2"
                                               Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
                                             <Path.Fill>
                                                 <MultiBinding Converter="{StaticResource EntityBrushConverter}">
                                                     <Binding Path="ColorIndex" />
                                                     <Binding Path="IsOtherCategory" />
                                                     <Binding Path="IsHovered" />
+                                                    <Binding Source="{x:Static services:ThemeManager.Instance}" Path="ActualTheme" />
                                                 </MultiBinding>
                                             </Path.Fill>
                                             <Path.ContextMenu>
@@ -91,23 +96,56 @@
                                                 </PathGeometry>
                                             </Path.Data>
                                         </Path>
+                                    </Canvas>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- Labels and the hover box, in a layer above every slice so a later slice never covers them.
+                             Not hit-testable: the pointer always reaches the slice underneath. -->
+                        <ItemsControl ItemsSource="{Binding DisplayedEntities}" IsHitTestVisible="False">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <Canvas />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type viewModels:FileSystemEntityViewModel}">
+                                    <Canvas>
+                                        <!-- Same magnification as the slice, so the label stays on it -->
+                                        <Canvas.RenderTransform>
+                                            <ScaleTransform
+                                                ScaleX="{Binding IsHovered, Converter={StaticResource ScaleMagnifierConverter}, ConverterParameter=1.1}"
+                                                ScaleY="{Binding IsHovered, Converter={StaticResource ScaleMagnifierConverter}, ConverterParameter=1.1}"
+                                                CenterX="200" CenterY="200" />
+                                        </Canvas.RenderTransform>
 
                                         <!-- Name Label: hidden on slices too thin to hold it; the hover tooltip still names them -->
                                         <TextBlock Text="{Binding DisplayName}" TextWrapping="Wrap" TextAlignment="Center"
+                                                   FontWeight="SemiBold"
                                                    Canvas.Left="{Binding LabelX}" Canvas.Top="{Binding LabelY}"
-                                                   Width="60" Height="40"
-                                                   Visibility="{Binding PercentageOfTotal, Converter={StaticResource PercentThresholdToVisibilityConverter}, ConverterParameter=4}" />
+                                                   Width="76" Height="40"
+                                                   Visibility="{Binding PercentageOfTotal, Converter={StaticResource PercentThresholdToVisibilityConverter}, ConverterParameter=4}">
+                                            <TextBlock.Foreground>
+                                                <MultiBinding Converter="{StaticResource EntityBrushConverter}" ConverterParameter="Label">
+                                                    <Binding Path="ColorIndex" />
+                                                    <Binding Path="IsOtherCategory" />
+                                                    <Binding Source="{x:Static services:ThemeManager.Instance}" Path="ActualTheme" />
+                                                </MultiBinding>
+                                            </TextBlock.Foreground>
+                                        </TextBlock>
 
                                         <!-- Size Info on Hover -->
-                                        <Border Background="White" BorderBrush="Black" BorderThickness="1" CornerRadius="3"
+                                        <Border Background="{DynamicResource Brush.Surface}" BorderBrush="{DynamicResource Brush.LineStrong}"
+                                                BorderThickness="1"
                                                 Visibility="{Binding IsHovered, Converter={StaticResource BooleanToVisibilityConverter}}"
                                                 Canvas.Left="{Binding TooltipX}" Canvas.Top="{Binding TooltipY}">
-                                            <StackPanel Margin="5">
-                                                <TextBlock Text="{Binding DisplayName}" FontWeight="Bold" />
+                                            <StackPanel Margin="8,5">
+                                                <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
                                                 <TextBlock Text="{Binding Size, Converter={StaticResource FileSizeConverter}}" />
-                                                <TextBlock Text="{Binding UsageInfo}" Foreground="#555"
+                                                <TextBlock Text="{Binding UsageInfo}" Style="{StaticResource Text.Secondary}"
                                                            Visibility="{Binding IsDrive, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                                <TextBlock Text="{Binding ModifiedInfo}" Foreground="#555"
+                                                <TextBlock Text="{Binding ModifiedInfo}" Style="{StaticResource Text.Secondary}"
                                                            Visibility="{Binding IsOtherCategory, Converter={StaticResource BooleanToVisibilityConverter}, ConverterParameter=Invert}" />
                                             </StackPanel>
                                         </Border>

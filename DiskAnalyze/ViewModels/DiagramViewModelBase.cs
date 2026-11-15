@@ -25,15 +25,9 @@ namespace DiskAnalyze.ViewModels
             {
                 if (SetProperty(ref _currentDirectory, value))
                 {
-                    var entities = CreateDisplayedEntities();
-                    AssignColors(entities);
-
-                    DisplayedEntities = new ObservableCollection<FileSystemEntityViewModel>(entities);
+                    RefreshDisplayedEntities();
                     CanNavigateUp = _currentDirectory.Parent != null;
                     CurrentPath = _currentDirectory.FullPath;
-
-                    // The previously inspected segment no longer belongs to this directory.
-                    ContentsTarget = null;
                 }
             }
         }
@@ -114,6 +108,17 @@ namespace DiskAnalyze.ViewModels
         }
 
         protected abstract IReadOnlyList<FileSystemEntityViewModel> CreateDisplayedEntities();
+
+        /// <summary>Rebuilds the segments of the current directory, e.g. after a display setting changed.</summary>
+        protected void RefreshDisplayedEntities()
+        {
+            var entities = CreateDisplayedEntities();
+            AssignColors(entities);
+            DisplayedEntities = new ObservableCollection<FileSystemEntityViewModel>(entities);
+
+            // The previously inspected segment may no longer exist (a new directory, a different "Other").
+            ContentsTarget = null;
+        }
 
         protected static void CalculatePercentages(IEnumerable<FileSystemEntityViewModel> items, long totalSize)
         {

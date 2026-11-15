@@ -5,6 +5,7 @@ using DiskAnalyze.Services;
 using Microsoft.Win32;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.IO;
 using System.Windows.Input;
 
 namespace DiskAnalyze.ViewModels
@@ -12,10 +13,13 @@ namespace DiskAnalyze.ViewModels
     public class MainViewModel : ViewModelBase
     {
         private readonly IFileSystemService _fileSystemService;
+        private readonly AppSettingsService _settings;
         private readonly CircularDiagramViewModel _circularDiagramViewModel;
         private readonly ChartDiagramViewModel _chartDiagramViewModel;
         private readonly DuplicatesViewModel _duplicatesViewModel;
+        private readonly SettingsViewModel _settingsViewModel;
         private ViewModelBase _currentViewModel;
+        private ViewModelBase _viewBeforeSettings;
         private ScanTarget? _selectedScanTarget;
         private CancellationTokenSource? _scanCancellation;
         private bool _hasScanResults;
@@ -34,8 +38,43 @@ namespace DiskAnalyze.ViewModels
                     RaisePropertyChanged(nameof(IsCircularSelected));
                     RaisePropertyChanged(nameof(IsChartSelected));
                     RaisePropertyChanged(nameof(IsDuplicatesSelected));
+                    RaisePropertyChanged(nameof(IsSettingsSelected));
+                    RaiseContentVisibilityChanged();
+                    CommandManager.InvalidateRequerySuggested();
                 }
             }
+        }
+
+        /// <summary>
+        /// Bound two-way to the toolbar's Settings toggle. Closing returns to the view that was open before.
+        /// </summary>
+        public bool IsSettingsSelected
+        {
+            get => CurrentViewModel == _settingsViewModel;
+            set
+            {
+                if (value && !IsSettingsSelected)
+                {
+                    _viewBeforeSettings = CurrentViewModel;
+                    CurrentViewModel = _settingsViewModel;
+                }
+                else if (!value && IsSettingsSelected)
+                {
+                    CurrentViewModel = _viewBeforeSettings;
+                }
+            }
+        }
+
+        /// <summary>Shown in place of an empty diagram when nothing has been scanned yet.</summary>
+        public bool ShowEmptyHint => !_hasScanResults && !IsLoading && (IsCircularSelected || IsChartSelected);
+
+        /// <summary>The current view is hidden behind the loading overlay and the empty-state hint.</summary>
+        public bool ShowContent => !IsLoading && !ShowEmptyHint;
+
+        private void RaiseContentVisibilityChanged()
+        {
+            RaisePropertyChanged(nameof(ShowEmptyHint));
+            RaisePropertyChanged(nameof(ShowContent));
         }
 
         // Bound two-way to the toolbar's view toggles, so the active view is always highlighted.
@@ -72,6 +111,8 @@ namespace DiskAnalyze.ViewModels
             {
                 if (SetProperty(ref _isLoading, value))
                 {
+                    RaiseContentVisibilityChanged();
+
                     // WPF re-queries CanExecute only after user input; a scan finishing on its own isn't input.
                     CommandManager.InvalidateRequerySuggested();
                 }
@@ -100,26 +141,47 @@ namespace DiskAnalyze.ViewModels
         public ICommand ScanCommand { get; }
         public ICommand ScanFolderCommand { get; }
         public ICommand CancelScanCommand { get; }
+        public ICommand CloseSettingsCommand { get; }
 
-        public MainViewModel(IFileSystemService fileSystemService, IDuplicateFinderService duplicateFinderService)
+        public MainViewModel(IFileSystemService fileSystemService, IDuplicateFinderService duplicateFinderService,
+            AppSettingsService settings)
         {
             _fileSystemService = fileSystemService;
-            _circularDiagramViewModel = new CircularDiagramViewModel();
+            _settings = settings;
+            _circularDiagramViewModel = new CircularDiagramViewModel { SliceCount = settings.Current.PieSlices };
             _chartDiagramViewModel = new ChartDiagramViewModel();
             _duplicatesViewModel = new DuplicatesViewModel(duplicateFinderService);
             _currentViewModel = _circularDiagramViewModel;
+            _viewBeforeSettings = _circularDiagramViewModel;
             _statusMessage = "Ready to scan";
 
             ScanTargets = new ObservableCollection<ScanTarget>(fileSystemService.GetScanTargets());
-            _selectedScanTarget = ScanTargets.FirstOrDefault();
+            _selectedScanTarget = FindOrAddTarget(settings.Current.StartupScanPath);
+            _settingsViewModel = new SettingsViewModel(settings, ScanTargets, () => IsSettingsSelected = false);
 
             ScanCommand = new RelayCommand(() => _ = ScanAsync(SelectedScanTarget), () => !IsLoading && SelectedScanTarget != null);
             ScanFolderCommand = new RelayCommand(ScanFolder, () => !IsLoading);
             CancelScanCommand = new RelayCommand(() => _scanCancellation?.Cancel(), () => IsLoading);
+            CloseSettingsCommand = new RelayCommand(() => IsSettingsSelected = false, () => IsSettingsSelected);
+
+            settings.Changed += (_, current) => _circularDiagramViewModel.SliceCount = current.PieSlices;
         }
 
-        /// <summary>Scans the default target (all fixed drives). Called once the main window is shown.</summary>
-        public void StartInitialScan() => _ = ScanAsync(SelectedScanTarget);
+        /// <summary>
+        /// Called once the main window is shown: scans the startup target from Settings, unless scanning on
+        /// startup is turned off.
+        /// </summary>
+        public void StartInitialScan()
+        {
+            if (_settings.Current.ScanOnStartup)
+            {
+                _ = ScanAsync(SelectedScanTarget);
+            }
+            else
+            {
+                StatusMessage = "Ready. Choose what to scan and press Scan.";
+            }
+        }
 
         private void ScanFolder()
         {
@@ -127,18 +189,27 @@ namespace DiskAnalyze.ViewModels
             if (dialog.ShowDialog() != true)
                 return;
 
-            var folder = dialog.FolderName;
-            var target = ScanTargets.FirstOrDefault(t =>
-                             t.Paths.Count == 1 && string.Equals(t.Paths[0], folder, StringComparison.OrdinalIgnoreCase))
-                         ?? new ScanTarget(folder, new[] { folder });
-
-            if (!ScanTargets.Contains(target))
-            {
-                ScanTargets.Add(target);
-            }
-
+            var target = FindOrAddTarget(dialog.FolderName);
             SelectedScanTarget = target;
             _ = ScanAsync(target);
+        }
+
+        // null means all fixed drives (the first target). A folder that no longer exists falls back to it too.
+        private ScanTarget? FindOrAddTarget(string? path)
+        {
+            if (path == null)
+                return ScanTargets.FirstOrDefault();
+
+            var existing = ScanTargets.Skip(1).FirstOrDefault(t => SettingsViewModel.IsTargetFor(t, path));
+            if (existing != null)
+                return existing;
+
+            if (!Directory.Exists(path))
+                return ScanTargets.FirstOrDefault();
+
+            var target = new ScanTarget(path, new[] { path });
+            ScanTargets.Add(target);
+            return target;
         }
 
         // Never throws: every failure ends up in the status bar.
@@ -166,6 +237,7 @@ namespace DiskAnalyze.ViewModels
                 _circularDiagramViewModel.SetRootDirectory(root);
                 _chartDiagramViewModel.SetRootDirectory(root);
                 _hasScanResults = true;
+                RaiseContentVisibilityChanged();
 
                 StatusMessage = $"Scanned {target.DisplayName}: {FileSizeFormatter.Format(root.Size)} in {stopwatch.Elapsed:m\\:ss}";
             }

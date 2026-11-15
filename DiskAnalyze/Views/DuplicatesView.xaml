@@ -30,9 +30,8 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" Text="Folder A:" VerticalAlignment="Center" />
-            <TextBox Grid.Column="1" Text="{Binding LeftFolderPath, UpdateSourceTrigger=PropertyChanged}"
-                     VerticalContentAlignment="Center" Padding="4,2" />
-            <Button Grid.Column="2" Content="Browse..." Margin="6,0,0,0" Padding="10,2"
+            <TextBox Grid.Column="1" Text="{Binding LeftFolderPath, UpdateSourceTrigger=PropertyChanged}" />
+            <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
                     Command="{Binding BrowseLeftCommand}" />
         </Grid>
 
@@ -44,9 +43,8 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" Text="Folder B:" VerticalAlignment="Center" />
-            <TextBox Grid.Column="1" Text="{Binding RightFolderPath, UpdateSourceTrigger=PropertyChanged}"
-                     VerticalContentAlignment="Center" Padding="4,2" />
-            <Button Grid.Column="2" Content="Browse..." Margin="6,0,0,0" Padding="10,2"
+            <TextBox Grid.Column="1" Text="{Binding RightFolderPath, UpdateSourceTrigger=PropertyChanged}" />
+            <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0"
                     Command="{Binding BrowseRightCommand}" />
         </Grid>
 
@@ -58,15 +56,15 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <StackPanel Grid.Column="0" Orientation="Horizontal">
-                <Button Content="Find Duplicates" Padding="14,4"
+                <Button Content="Find Duplicates" Style="{StaticResource Button.Primary}" Padding="14,0"
                         Command="{Binding FindDuplicatesCommand}" />
-                <Button Content="Cancel" Padding="14,4" Margin="6,0,0,0"
+                <Button Content="Cancel" Padding="14,0" Margin="6,0,0,0"
                         Command="{Binding CancelCommand}"
                         Visibility="{Binding IsScanning, Converter={StaticResource BooleanToVisibilityConverter}}" />
             </StackPanel>
             <TextBlock Grid.Column="1" Text="{Binding StatusMessage}" VerticalAlignment="Center"
                        Margin="12,0,0,0" TextTrimming="CharacterEllipsis" />
-            <ProgressBar Grid.Column="2" IsIndeterminate="True" Width="120" Height="14"
+            <ProgressBar Grid.Column="2" IsIndeterminate="True" Width="120" Height="4"
                          Visibility="{Binding IsScanning, Converter={StaticResource BooleanToVisibilityConverter}}" />
         </Grid>
 
@@ -86,7 +84,7 @@
                                     Binding="{Binding Extension}" />
             </DataGrid.Columns>
             <DataGrid.RowStyle>
-                <Style TargetType="DataGridRow">
+                <Style TargetType="DataGridRow" BasedOn="{StaticResource {x:Type DataGridRow}}">
                     <Setter Property="ContextMenu" Value="{StaticResource RowContextMenu}" />
                     <Setter Property="ToolTip">
                         <Setter.Value>
@@ -98,8 +96,12 @@
                     </Setter>
                     <Style.Triggers>
                         <DataTrigger Binding="{Binding IsAlternateGroup}" Value="True">
-                            <Setter Property="Background" Value="#F2F5FA" />
+                            <Setter Property="Background" Value="{DynamicResource Brush.Band}" />
                         </DataTrigger>
+                        <!-- After the band, so hover still shows on shaded groups -->
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Background" Value="{DynamicResource Brush.Hover}" />
+                        </Trigger>
                     </Style.Triggers>
                 </Style>
             </DataGrid.RowStyle>

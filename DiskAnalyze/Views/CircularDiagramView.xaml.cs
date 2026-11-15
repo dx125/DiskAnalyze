@@ -64,7 +64,7 @@ namespace DiskAnalyze.Views
 
                 double middleAngle = startAngle + sweep / 2;
                 var labelCenter = PointOnCircle(middleAngle, Radius * 0.7);
-                entity.LabelX = labelCenter.X - 30; // half label width
+                entity.LabelX = labelCenter.X - 38; // half label width
                 entity.LabelY = labelCenter.Y - 20; // half label height
                 entity.TooltipX = entity.LabelX;
                 entity.TooltipY = entity.LabelY - 40;
@@ -136,10 +136,10 @@ namespace DiskAnalyze.Views
         {
             var result = VisualTreeHelper.HitTest(CircularDiagramCanvas, position);
 
-            // Walk up from the hit visual to the owning entity. The hovered segment is
-            // overlaid by its tooltip and label, so the topmost visual under the cursor
-            // is often not the Path itself — matching only Path would flip the hover
-            // state off as soon as those overlays appear, causing a flicker loop.
+            // Walk up from the hit visual to the owning entity. Labels and the hover box live
+            // in a separate layer that isn't hit-testable, so the hit is normally the slice's
+            // Path; walking up still guards against a flicker loop (D-010) should anything
+            // drawn over a slice become hit-testable again.
             for (DependencyObject? current = result?.VisualHit; current != null; current = VisualTreeHelper.GetParent(current))
             {
                 if (current is FrameworkElement element && element.DataContext is FileSystemEntityViewModel entity)

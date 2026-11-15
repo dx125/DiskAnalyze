@@ -2,15 +2,25 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:converters="clr-namespace:DiskAnalyze.Converters"
-             StartupUri="Views/MainWindow.xaml">
+             ShutdownMode="OnMainWindowClose">
+    <!-- No StartupUri: App.OnStartup applies the saved theme, then creates the main window -->
     <Application.Resources>
-        <!-- Converters shared by all views -->
-        <converters:InvertibleBooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
-        <converters:BooleanToGridLengthConverter x:Key="BooleanToGridLengthConverter" />
-        <converters:ScaleMagnifierConverter x:Key="ScaleMagnifierConverter" />
-        <converters:EntityBrushConverter x:Key="EntityBrushConverter" />
-        <converters:FileSizeConverter x:Key="FileSizeConverter" />
-        <converters:PercentToStarConverter x:Key="PercentToStarConverter" />
-        <converters:PercentThresholdToVisibilityConverter x:Key="PercentThresholdToVisibilityConverter" />
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- Colour tokens. Must stay first: ThemeManager replaces index 0 to switch themes -->
+                <ResourceDictionary Source="Themes/Colors.Light.xaml" />
+                <ResourceDictionary Source="Themes/Controls.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <!-- Converters shared by all views -->
+            <converters:InvertibleBooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+            <converters:BooleanToGridLengthConverter x:Key="BooleanToGridLengthConverter" />
+            <converters:ScaleMagnifierConverter x:Key="ScaleMagnifierConverter" />
+            <converters:EntityBrushConverter x:Key="EntityBrushConverter" />
+            <converters:EnumEqualsConverter x:Key="EnumEqualsConverter" />
+            <converters:FileSizeConverter x:Key="FileSizeConverter" />
+            <converters:PercentToStarConverter x:Key="PercentToStarConverter" />
+            <converters:PercentThresholdToVisibilityConverter x:Key="PercentThresholdToVisibilityConverter" />
+        </ResourceDictionary>
     </Application.Resources>
 </Application>

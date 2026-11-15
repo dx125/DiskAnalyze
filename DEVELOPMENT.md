@@ -29,33 +29,46 @@ DiskAnalyze.Application (net10.0, UI-agnostic)
 │                    CloudFiles (online-only placeholder detection)
 ├─ DiskEntities/     BaseFileSystemEntity, DirectoryEntityInfo (Children, iterative CalculateSize),
 │                    FileEntityInfo (IsCloudOnly)
-└─ Duplicates/       DuplicateFinderService (size+ext prefilter → SHA-256, nesting-aware),
-                     DuplicateFileGroup (ReclaimableBytes), DuplicateSearchProgress
+├─ Duplicates/       DuplicateFinderService (size+ext prefilter → SHA-256, nesting-aware),
+│                    DuplicateFileGroup (ReclaimableBytes), DuplicateSearchProgress
+└─ Settings/         AppSettings (immutable record, Normalize), SettingsStore (JSON in
+                     %LOCALAPPDATA%\DiskAnalyze\settings.json; lenient read, atomic write)
 
 DiskAnalyze (net10.0-windows, WPF)
 ├─ Core/             ViewModelBase, RelayCommand, FileSizeFormatter
+├─ Themes/           Colors.Light.xaml, Colors.Dark.xaml (same token keys), Controls.xaml
+│                    (square templates for every control in use, icons)
 ├─ Services/         FileSystemService (scan targets; domain tree → VM tree; drive usage and
-│                    "not scanned"), ScanTarget, ShellActions (Show in Explorer)
-├─ ViewModels/       MainViewModel (view switching, scan / rescan / cancel, progress),
-│                    DiagramViewModelBase (navigation, rank colors, side panel, Show in Explorer),
-│                    Circular/Chart/Duplicates VMs
-├─ Views/            MainWindow, CircularDiagramView (pie geometry + hit testing in code-behind),
-│                    ChartDiagramView (virtualized), DuplicatesView, SegmentContentsView (side panel)
-└─ Converters/       shared in App.xaml: entity brush (rank palette + hover), size, visibility,
-                     percent→star width, percent threshold, bool→GridLength, scale
+│                    "not scanned"), ScanTarget, ShellActions (Show in Explorer),
+│                    ThemeManager (swaps the colour dictionary, follows Windows, DWM title bar),
+│                    AppSettingsService (current settings, apply + save on change)
+├─ ViewModels/       MainViewModel (view switching incl. Settings, scan / rescan / cancel, progress,
+│                    startup target), DiagramViewModelBase (navigation, rank colors, side panel,
+│                    Show in Explorer), Circular (configurable slice count)/Chart/Duplicates/Settings VMs
+├─ Views/            MainWindow, CircularDiagramView (pie geometry + hit testing in code-behind;
+│                    labels in a non-hit-testable layer above the slices), ChartDiagramView
+│                    (virtualized), DuplicatesView, SegmentContentsView (side panel), SettingsView
+└─ Converters/       shared in App.xaml: entity brush (theme tokens, rank, hover, label colour), enum
+                     equals (radio groups), size, visibility, percent→star width, percent threshold,
+                     bool→GridLength, scale
 
 DiskAnalyze.Application.Tests (net10.0, xUnit)
-                     scanner on temp dirs (incl. junctions), sizes, cloud attributes, duplicates
+                     scanner on temp dirs (incl. junctions), sizes, cloud attributes, duplicates,
+                     settings store
 ```
 
-Data flow: `MainWindow.Loaded` → `MainViewModel.StartInitialScan()` →
+Startup: `App.OnStartup` loads the settings, applies the theme (so the window never flashes in the
+wrong colours) and creates `MainWindow`.
+
+Data flow: `MainWindow.Loaded` → `MainViewModel.StartInitialScan()` (skipped when "Scan on startup" is off) →
 `FileSystemService.LoadFileSystemDataAsync(target paths, progress, ct)` → `AnalyzePathsAsync` scans
 in parallel and reports progress every 200 ms → domain tree → VM tree built off the UI thread → the
 same root is shared by the pie and bar views. A single drive or folder target becomes the root itself;
 "All fixed drives" adds a synthetic "This PC" parent. Cancel keeps the previous results.
 The Duplicates view runs its own scans of the two selected folders.
 
-Composition root: `MainWindow` constructor (no DI container).
+Composition root: `App.OnStartup` (settings, theme) and the `MainWindow` constructor (services and
+view models); no DI container.
 
 ---
 
@@ -67,7 +80,8 @@ Composition root: `MainWindow` constructor (no DI container).
 | 2026-06-30 | `6661c76` | Whole application landed in one commit (≈2.5k lines): parallel scanner, pie and bar diagrams with drill-down, "Other" bucket, hover tooltips, segment-contents side panel, drive usage %, two-folder duplicate finder. The commit message describes only the final UI fixes: diagram hidden while loading, side-panel column collapses to zero width when empty, "Show in Explorer" context menu. Earlier iterations are not in git. |
 | 2026-11-14 | `8b91848` | Project review; this document created. Planned two features: folder content types (§6.1) and a photo browser with content filters (§6.2, feasibility analysis). |
 | 2026-11-14 | `01928cf` | Review fixes (developed on branch `review-fixes`, fast-forwarded into `main`). Retargeted to .NET 10. Fixed I-1–I-4, I-6, I-8, I-10, I-11, I-13–I-17; partly fixed I-9 and I-12 (§4). New: scan target picker, Rescan, Cancel, live progress, OneDrive support, 27 xUnit tests, README. Smoke-tested in the running app (benchmarks in `machine.local.json`). |
-| 2026-11-14 | — | Machine-specific details moved to the git-ignored `machine.local.json`. Designed the capability gate for photo analysis (§6.3, D-027); Feature B steps renumbered (the gate is B2). Added a scan-error summary to the roadmap. |
+| 2026-11-14 | `598d65f` | Machine-specific details moved to the git-ignored `machine.local.json`. Designed the capability gate for photo analysis (§6.3, D-027); Feature B steps renumbered (the gate is B2). Added a scan-error summary to the roadmap. |
+| 2026-11-15 | — | Visual style (§6.4, D-028–D-031). Light and dark themes, palette "Graphite · Cobalt", picked by the owner from three options. Hot switching; System mode follows Windows. Square templates for every control; the standard title bar is recoloured through DWM, and window corners are square. New Settings view (gear in the toolbar): theme, scan on startup and what to scan, pie slice count (3–8), and the photo-analysis switches (inactive until Feature B). Settings are stored in `%LOCALAPPDATA%\DiskAnalyze\settings.json`. Toolbar tabs renamed Pie / Bars / Duplicates. Bars now draw the label above a thin bar. Fixed I-18. 12 new tests (39 total). |
 
 ---
 
@@ -82,17 +96,23 @@ Composition root: `MainWindow` constructor (no DI container).
 - [x] Inaccessible folders are skipped. Drive rows show "% used" and, when the gap is above 1% of capacity, "N GB not scanned".
 
 **Visualization**
-- [x] Pie view: top 5 plus "Other", rank-based colors (never repeated within the top 5). Hover brightens and magnifies the slice and shows a tooltip (size, % used, modified date). Labels are hidden on slices under 4%. Click a folder to drill down; click "Other" to list its members.
-- [x] Bar view: all non-empty children, virtualized; bars scale with the window width; the whole row is clickable; folders get a chevron.
+- [x] Pie view: top N plus "Other" (N = 3–8, default 5, set in Settings), rank-based colors (never repeated among the slices). Hover shifts the slice colour, magnifies it and shows a tooltip (size, % used, modified date). Labels sit above every slice and are hidden on slices under 4%. Click a folder to drill down; click "Other" to list its members.
+- [x] Bar view: all non-empty children, virtualized; a label row above a thin bar that scales with the window width; the whole row is clickable; folders get a chevron.
 - [x] Context menu: "Show contents" and "Show in Explorer". The side panel has a close button and tooltips with path and modified date.
-- [x] The toolbar highlights the active view.
+- [x] Toolbar tabs (Pie / Bars / Duplicates) mark the active view with an accent bar.
+
+**Appearance & settings**
+- [x] Light and dark themes, switched live; "System" follows the Windows app mode while the app runs (§6.4).
+- [x] Square, flat controls: buttons, inputs, combo boxes, check boxes, scroll bars, menus, tooltips, data grid. The standard title bar takes the theme colours; window corners are square on Windows 11.
+- [x] Settings view behind the gear button (Back or Esc returns): theme, scan on startup and its target, pie slices, photo-analysis switches (shown, inactive). Changes apply at once and are saved immediately.
+- [x] When scan on startup is off, the diagrams show a "Nothing scanned yet" hint instead of an empty pie.
 
 **Duplicates**
 - [x] Compare two folders. Nested selections compare "rest of outer" vs. "inner". Empty and cloud-only files are ignored.
 - [x] Per-phase progress and Cancel. Summary: groups, files and reclaimable bytes. Rows of the same group share a background; the context menu reveals file A or B in Explorer.
 
 **Quality**
-- [x] 27 xUnit tests for the Application layer; README.
+- [x] 39 xUnit tests for the Application layer; README.
 
 ---
 
@@ -118,6 +138,9 @@ this file's git history.
 - **Found during smoke testing:**
   - Commands stayed disabled after a scan finished until the next mouse or keyboard input, because WPF's `CommandManager` doesn't requery by itself. Fixed with `InvalidateRequerySuggested()` on loading-state changes.
   - "Not scanned" reported NTFS metadata on an empty 4 TB drive. The threshold is now relative to capacity (D-025).
+
+### Fixed (2026-11-15, visual style)
+- **I-18. Pie labels could be covered by the next slice.** Each slice drew its label and hover box in its own layer, so every later slice painted over them; long names were cut off ("FlutterSdk" showed as "FlutterS"). Labels and the hover box now live in one layer above all slices. That layer isn't hit-testable, so hover and clicks still reach the slices. The label box also widened from 60 to 76 px, so short names no longer wrap mid-word.
 
 ### Partly fixed
 - **I-9. Scanned vs. used gap.** Drive rows and tooltips show "N GB not scanned". Still open: dedicated "Free" and "Not scanned" segments in the diagrams; a "Restart as administrator" action. Besides access rights, the gap can come from I/O errors: a flaky external drive timing out on reads (`ERROR_SEM_TIMEOUT`) looks the same today, which the scan-error summary (roadmap Next) will tell apart.
@@ -146,6 +169,7 @@ unless the goal changes.
 ### Next — daily-use comfort
 - [x] Scan target picker (drive list plus "Folder…"), **Scan** (rescan) and **Cancel** with a `CancellationToken` plumbed end to end (I-10).
 - [x] Live progress: folders and files scanned, bytes, current path, elapsed time (I-11).
+- [x] Light and dark themes with hot switching; Settings view; settings file (§6.4, D-028–D-031).
 - [ ] Clickable breadcrumb path; Back/Forward, including mouse X1/X2 buttons.
 - [ ] Context menu: Open, Copy path, **Delete to Recycle Bin** (with confirmation). Update sizes up the parent chain in place without a rescan.
 - [ ] Drive level: show "Free" and "Not scanned" segments in the diagrams (the "N GB not scanned" text is done, I-9); add a "Restart as administrator" action.
@@ -191,8 +215,9 @@ A separate window for viewing photos, with filters such as sunsets, people, city
 - [ ] Optional: read the NTFS MFT directly (admin only), which gives order-of-magnitude faster full-drive scans.
 
 ### Maybe
-- Dark theme; name search/filter; `DiskAnalyze.exe <path>` command-line argument plus an Explorer
+- Name search/filter; `DiskAnalyze.exe <path>` command-line argument plus an Explorer
   "Analyze with DiskAnalyze" entry; `FileSystemWatcher` live updates for the open folder.
+- Remember window size and position, and the last view, in the settings file.
 
 ---
 
@@ -232,7 +257,8 @@ point to the photo browser.
 
 **Fixed category palette** (distinct from the rank palette): Images orange, Video purple, Audio
 teal, Documents blue, Archives brown, Code green, Apps & system slate, Other light gray, Mixed
-neutral gray.
+neutral gray. Since the themes (§6.4) these become `Color.Category.*` tokens in both colour
+dictionaries, with light and dark steps validated like the series palette.
 
 ### 6.2 Photo content analysis — feasibility (decided: D-020)
 
@@ -330,6 +356,64 @@ Allow/Enabled in settings forces the feature on wherever possible (e.g. CPU fall
 **Code placement.**
 - `MachineProfile` (detected facts) and `FeatureGate`, a pure function from profile + settings + overrides to decisions, live in the Application layer and are unit-tested table-first.
 - DXGI and ONNX Runtime probing is Windows/native code. It goes in the WPF project, or in a future `DiskAnalyze.Photos` project.
+- The user-settings layer already exists: `AppSettings.PhotoAnalysis` (`photoContentAnalysis`, `clipOnnx`, `executionProvider` in `settings.json`, the same names as the `features` section of `machine.local.json`). The Settings view shows it disabled until B2.
+
+### 6.4 Visual style & theming (decided: D-028–D-031)
+
+**Look.** Strict and flat: no rounded corners anywhere (controls, bars, tooltips, menus, window),
+1 px lines, no shadows. Depth comes only from surface colour and a line. The accent marks state as a
+2 px bar (active tab) or a 1 px border (focus, Settings toggle, open combo box). The primary button
+(Scan, Find Duplicates) is the only solid-accent control on a screen. The font is the system Segoe UI
+at 12 px.
+
+**Palette "Graphite · Cobalt"** (chosen from three options; the comparison page with the rejected
+Slate · Teal and Carbon · Amber lives outside the repo). Cool neutral greys and one cobalt accent.
+
+| Token | Light | Dark | Use |
+|---|---|---|---|
+| Window | `#F3F4F6` | `#111316` | window and diagram background |
+| Chrome | `#FFFFFF` | `#181B1F` | title bar (via DWM), toolbar, status bar |
+| Surface | `#FFFFFF` | `#1C1F24` | side panel, tooltips, inputs, menus |
+| Band / Hover / Selected | `#F0F2F5` / `#E7EAEF` / `#DFE7FB` | `#212429` / `#2A2F36` / `#1D2B4D` | row states |
+| Line / LineStrong | `#D7DBE1` / `#A9B0BA` | `#2C3138` / `#4A515B` | separators / control borders |
+| Text / Secondary / Muted | `#14171C` / `#4A515C` / `#6B7380` | `#E7E9EC` / `#A9AFB8` / `#7D8590` | text levels (all ≥ 4.3:1 on Window) |
+| Accent / OnAccent | `#2453D4` / `#FFFFFF` | `#5B8CFF` / `#0B1020` | accent ≥ 5.8:1 on Window in both themes |
+
+**Diagram palette.** Eight series colours in a fixed order, the same hues stepped separately for each
+theme (not an automatic inversion), plus a grey "Other". Validated with a colour-vision check: the
+worst adjacent pair under protanopia/deuteranopia simulation is ΔE 9.1 (light) / 8.4 (dark), target
+≥ 8. Under normal vision it is ΔE 19.6 / 19.3, floor 15. On dark, every fill is ≥ 3:1 against the
+background. On light, four fills (orange, green, yellow, pink) are below 3:1, which is acceptable
+because every slice carries a label and the side panel lists sizes. Text on a fill is white, except
+dark on yellow in the light theme. The bar view puts the label above an 8 px bar, so text never sits
+on a fill. Warning `#FAB219` and Critical `#D03B3B` are reserved for status and always come with text.
+
+**How switching works.** `App.xaml` merges `Themes/Colors.Light.xaml` first and `Themes/Controls.xaml`
+second. `ThemeManager` replaces merged dictionary 0 with the other colour file. Everything styled
+through `{DynamicResource Brush.*}` repaints in place. Brushes computed in code (`EntityBrushConverter`
+for slices, bars and slice labels) add `ThemeManager.ActualTheme` as an extra binding, so they
+re-evaluate on a switch. In System mode, `SystemEvents.UserPreferenceChanged` (General) re-reads
+`HKCU\…\Themes\Personalize\AppsUseLightTheme`. The title bar follows through `DwmSetWindowAttribute`:
+immersive dark mode, caption colour = Chrome, text = Text, border = LineStrong, corners = do not round.
+
+**Rules for new UI.**
+- Never use a literal colour in a view. Add a token to *both* colour files, or reuse one.
+- Use DynamicResource for brushes, never StaticResource, or the element won't follow a theme switch.
+- Popups (menus, tooltips, combo drop-downs) don't inherit the window's colours, so their styles set Foreground and Background themselves.
+- A new kind of control needs a square template in `Controls.xaml`: the stock Aero2 templates hard-code light-theme hover colours.
+
+**Settings file** (`%LOCALAPPDATA%\DiskAnalyze\settings.json`, written on every change):
+```json
+{
+  "theme": "system",              // system | light | dark
+  "scanOnStartup": true,
+  "startupScanPath": null,        // null = all fixed drives; else a drive or folder
+  "pieSlices": 5,                 // 3–8
+  "photoAnalysis": { "photoContentAnalysis": "auto", "clipOnnx": "auto", "executionProvider": "auto" }
+}
+```
+Reading is lenient: comments, trailing commas and any key casing are accepted, and out-of-range
+values are clamped. A malformed file falls back to the defaults and never blocks startup.
 
 ---
 
@@ -373,7 +457,7 @@ synchronization on shared parents. Iterative since 2026-11-14 (I-17).
 Simple and fast; ignores compression, sparseness, cluster slack and hard links (I-7). Exception:
 cloud-only files count as 0.
 
-**D-009 — Pie shows top 5 plus "Other"; bars show everything** (2026-06, accepted)
+**D-009 — Pie shows top 5 plus "Other"; bars show everything** (2026-06, accepted; amended by D-031: the slice count is a setting, 3–8)
 Why: the pie stays readable, while the bar view gives the full list. "Other" is a synthetic VM
 holding its members, so "Show contents" works on it, and clicking it opens that list.
 
@@ -438,9 +522,10 @@ points). Reading it opens the reparse point itself, so it never triggers a downl
 and they are excluded from hashing because reading them would download them. Empty files are also
 excluded from duplicates, since they free no space. Supersedes D-005; amends D-008.
 
-**D-023 — Segment colors by size rank** (2026-11-14, accepted)
-`ColorIndex` is the rank among displayed siblings (largest first) into an 8-color palette light
-enough for black labels; "Other" is gray. Every view sorts the same way, so an entity keeps its color
+**D-023 — Segment colors by size rank** (2026-11-14, accepted; palette replaced by D-029)
+`ColorIndex` is the rank among displayed siblings (largest first) into an 8-color palette; "Other"
+is gray. (The original palette was light enough for black labels; D-029 swapped in theme-aware,
+validated colours with white labels.) Every view sorts the same way, so an entity keeps its color
 across pie and bars, and the pie's top 5 never collide. Supersedes D-011. Feature A adds a
 "By content" mode (D-019).
 
@@ -469,3 +554,39 @@ derives `ClipOnnx` and `PhotoContentAnalysis`. User settings, then the file's `f
 (developer override), take precedence over detection. Why: the file is absent next to the exe and on
 other machines, hardware and drivers change, and only a real probe proves the GPU path works.
 Details: §6.3.
+
+**D-028 — Own themes from resource dictionaries, not WPF's Fluent theme** (2026-11-15, accepted)
+Two colour dictionaries with identical token keys plus one shared `Controls.xaml` with square
+templates; `ThemeManager` swaps the colour dictionary and everything bound with DynamicResource
+repaints live. Why: the owner asked for strict lines and no rounded corners. The .NET 9+ Fluent
+theme (`Application.ThemeMode`) gives light/dark for free but rounds every control and brings the
+Windows 11 look, and overriding its templates costs as much as writing our own, which also gives
+full control of the palette. Trade-off: every control kind in use needs a template, and a new kind
+needs one too (§6.4 rules).
+
+**D-029 — Palette "Graphite · Cobalt"; one validated diagram palette for both themes** (2026-11-15, accepted, chosen by owner)
+Chosen from three options with light/dark mock-ups: Graphite · Cobalt, Slate · Teal and Carbon ·
+Amber. Amber was the most characterful, but its accent collided with the warning colour; teal
+clashed with nothing. The owner picked the calmest option, for long sessions. The cobalt accent sits
+close to diagram series 1 (blue); the two never appear in the same role. Diagram colours are
+eight fixed-order hues with separate light and dark steps, validated for colour-blind separation
+(numbers in §6.4); labels go above bars rather than on them. Supersedes the palette of D-023.
+
+**D-030 — Keep the standard title bar, recoloured through DWM; square window corners** (2026-11-15, accepted, decided by owner)
+`DwmSetWindowAttribute` sets immersive dark mode and the caption, text and border colours from the
+theme tokens, and turns off Windows 11 corner rounding. The caption matches the toolbar, so the two
+read as one band. Why: native caption buttons, Snap Layouts and accessibility keep working with
+little code. A custom title bar merged with the toolbar was rejected: it would mean reimplementing
+the caption buttons and the Snap flyout. On Windows 10 the colour and corner attributes are ignored
+and the frame stays standard.
+
+**D-031 — Settings: a view in the main window, applied immediately, stored as JSON** (2026-11-15, accepted)
+A gear toggle in the toolbar opens the Settings view in place of the current one; Back, Esc or any
+tab returns. There is no Save button: each change is applied through `AppSettingsService.Changed`
+and written at once (atomic temp-file replace) to `%LOCALAPPDATA%\DiskAnalyze\settings.json`. If
+the write fails, the change still holds for the session and the view shows the error. The model
+(`AppSettings`, `SettingsStore`) lives in the Application layer so it is unit-tested, and so the
+photo-analysis gate (D-027) can read the same file later. Contents: theme (System by default),
+scan on startup and its target (default: all fixed drives), pie slices (3–8; the maximum equals the
+palette size, so slices never share a colour), and the photo-analysis switches, which stay
+disabled until Feature B. Size units (1024 vs 1000) were considered and left out.

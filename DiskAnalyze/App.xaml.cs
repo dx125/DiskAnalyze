@@ -1,4 +1,6 @@
-﻿using System.Windows;
+﻿using DiskAnalyze.Application.Settings;
+using DiskAnalyze.Services;
+using System.Windows;
 
 namespace DiskAnalyze
 {
@@ -30,6 +32,20 @@ namespace DiskAnalyze
                                 MessageBoxImage.Error);
                 args.Handled = true;
             };
+
+            // Theme first, so the window never flashes in the wrong colours.
+            var settings = new AppSettingsService(new SettingsStore(SettingsStore.DefaultFilePath));
+            ThemeManager.Instance.SetPreference(settings.Current.Theme);
+            settings.Changed += (_, current) => ThemeManager.Instance.SetPreference(current.Theme);
+
+            MainWindow = new MainWindow(settings);
+            MainWindow.Show();
+        }
+
+        protected override void OnExit(ExitEventArgs e)
+        {
+            ThemeManager.Instance.Shutdown();
+            base.OnExit(e);
         }
     }
 }

@@ -7,31 +7,36 @@
              mc:Ignorable="d"
              d:DesignHeight="450" d:DesignWidth="240">
 
-    <Border BorderBrush="#DDD" BorderThickness="1,0,0,0"
+    <Border Background="{DynamicResource Brush.Surface}" BorderBrush="{DynamicResource Brush.Line}" BorderThickness="1,0,0,0"
             Visibility="{Binding HasContents, Converter={StaticResource BooleanToVisibilityConverter}}">
-        <Grid Margin="8">
+        <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <DockPanel Grid.Row="0" Margin="0,0,0,8">
-                <Button DockPanel.Dock="Right" Content="✕" VerticalAlignment="Top" Padding="6,0"
-                        Background="Transparent" BorderThickness="0" ToolTip="Close"
-                        Command="{Binding HideContentsCommand}" />
-                <TextBlock Text="{Binding ContentsTitle}" FontWeight="Bold" TextWrapping="Wrap" />
-            </DockPanel>
+            <Border Grid.Row="0" BorderBrush="{DynamicResource Brush.Line}" BorderThickness="0,0,0,1" Padding="10,7,6,7">
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Style="{StaticResource Button.Ghost}" VerticalAlignment="Top"
+                            ToolTip="Close" AutomationProperties.Name="Close"
+                            Command="{Binding HideContentsCommand}">
+                        <Path Data="{StaticResource Icon.Close}" Style="{StaticResource Icon.Stroke}" />
+                    </Button>
+                    <TextBlock Text="{Binding ContentsTitle}" FontWeight="SemiBold" TextWrapping="Wrap"
+                               VerticalAlignment="Center" Margin="0,0,6,0" />
+                </DockPanel>
+            </Border>
 
-            <ListBox Grid.Row="1" ItemsSource="{Binding SegmentContents}"
-                     BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+            <ListBox Grid.Row="1" ItemsSource="{Binding SegmentContents}" Padding="0,2">
                 <ListBox.ItemContainerStyle>
-                    <Style TargetType="ListBoxItem">
+                    <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="Padding" Value="10,4" />
                     </Style>
                 </ListBox.ItemContainerStyle>
                 <ListBox.ItemTemplate>
                     <DataTemplate DataType="{x:Type viewModels:FileSystemEntityViewModel}">
-                        <Grid Margin="0,2">
+                        <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
@@ -39,12 +44,12 @@
                             <Grid.ToolTip>
                                 <StackPanel>
                                     <TextBlock Text="{Binding FullPath}" />
-                                    <TextBlock Text="{Binding ModifiedInfo}" Foreground="#555" />
+                                    <TextBlock Text="{Binding ModifiedInfo}" Style="{StaticResource Text.Secondary}" />
                                 </StackPanel>
                             </Grid.ToolTip>
 
                             <TextBlock Grid.Column="0" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                            <TextBlock x:Name="SizeText" Grid.Column="1" Margin="8,0,0,0" Foreground="#555"
+                            <TextBlock x:Name="SizeText" Grid.Column="1" Margin="8,0,0,0" Style="{StaticResource Text.Secondary}"
                                        Text="{Binding Size, Converter={StaticResource FileSizeConverter}}" />
                         </Grid>
                         <DataTemplate.Triggers>
@@ -52,6 +57,7 @@
                             <DataTrigger Binding="{Binding IsCloudOnly}" Value="True">
                                 <Setter TargetName="SizeText" Property="Text" Value="cloud only" />
                                 <Setter TargetName="SizeText" Property="FontStyle" Value="Italic" />
+                                <Setter TargetName="SizeText" Property="Foreground" Value="{DynamicResource Brush.TextMuted}" />
                             </DataTrigger>
                         </DataTemplate.Triggers>
                     </DataTemplate>

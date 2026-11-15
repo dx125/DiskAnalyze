@@ -7,20 +7,22 @@ using System.Windows;
 namespace DiskAnalyze
 {
     /// <summary>
-    /// Interaction logic for MainWindow.xaml
+    /// Interaction logic for MainWindow.xaml. Also the composition root (D-002).
     /// </summary>
     public partial class MainWindow : Window
     {
         private readonly MainViewModel _viewModel;
 
-        public MainWindow()
+        public MainWindow(AppSettingsService settings)
         {
             InitializeComponent();
+            ThemeManager.Instance.Attach(this);
 
             var analyzeService = new AnalyzeDiskService();
             _viewModel = new MainViewModel(
                 new FileSystemService(analyzeService),
-                new DuplicateFinderService(analyzeService));
+                new DuplicateFinderService(analyzeService),
+                settings);
             DataContext = _viewModel;
 
             Loaded += OnFirstLoaded;

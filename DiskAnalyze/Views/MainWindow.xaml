@@ -6,7 +6,13 @@
         xmlns:views="clr-namespace:DiskAnalyze.Views"
         xmlns:viewModels="clr-namespace:DiskAnalyze.ViewModels"
         mc:Ignorable="d"
-        Title="DiskAnalyze" Height="650" Width="980">
+        Title="DiskAnalyze" Height="650" Width="980" MinWidth="760" MinHeight="420"
+        Background="{DynamicResource Brush.Window}" Foreground="{DynamicResource Brush.Text}"
+        FontFamily="Segoe UI" FontSize="12" UseLayoutRounding="True">
+
+    <Window.InputBindings>
+        <KeyBinding Key="Escape" Command="{Binding CloseSettingsCommand}" />
+    </Window.InputBindings>
 
     <Window.Resources>
         <DataTemplate DataType="{x:Type viewModels:CircularDiagramViewModel}">
@@ -21,11 +27,9 @@
             <views:DuplicatesView />
         </DataTemplate>
 
-        <!-- View switcher: radio buttons drawn as toggle buttons, so the active view stays pressed -->
-        <Style x:Key="ViewToggleStyle" TargetType="RadioButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
-            <Setter Property="Margin" Value="0,0,6,0" />
-            <Setter Property="Padding" Value="10,5" />
-        </Style>
+        <DataTemplate DataType="{x:Type viewModels:SettingsViewModel}">
+            <views:SettingsView />
+        </DataTemplate>
     </Window.Resources>
 
     <Grid>
@@ -35,48 +39,62 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Toolbar -->
-        <DockPanel Grid.Row="0" Margin="10,10,10,4" LastChildFill="False">
-            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
-                <RadioButton Content="Circular Diagram" Style="{StaticResource ViewToggleStyle}"
-                             IsChecked="{Binding IsCircularSelected, Mode=TwoWay}" />
-                <RadioButton Content="Chart Diagram" Style="{StaticResource ViewToggleStyle}"
-                             IsChecked="{Binding IsChartSelected, Mode=TwoWay}" />
-                <RadioButton Content="Find Duplicates" Style="{StaticResource ViewToggleStyle}"
-                             IsChecked="{Binding IsDuplicatesSelected, Mode=TwoWay}" />
-            </StackPanel>
+        <!-- Toolbar: same colour as the title bar, so the two read as one band -->
+        <Border Grid.Row="0" Background="{DynamicResource Brush.Chrome}"
+                BorderBrush="{DynamicResource Brush.Line}" BorderThickness="0,0,0,1">
+            <DockPanel Height="40" Margin="4,0,8,0" LastChildFill="False">
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                    <RadioButton Content="Pie" Style="{StaticResource Toolbar.Tab}" ToolTip="The largest items as a pie"
+                                 IsChecked="{Binding IsCircularSelected, Mode=TwoWay}" />
+                    <RadioButton Content="Bars" Style="{StaticResource Toolbar.Tab}" ToolTip="Every item as a bar"
+                                 IsChecked="{Binding IsChartSelected, Mode=TwoWay}" />
+                    <RadioButton Content="Duplicates" Style="{StaticResource Toolbar.Tab}" ToolTip="Files duplicated between two folders"
+                                 IsChecked="{Binding IsDuplicatesSelected, Mode=TwoWay}" />
+                </StackPanel>
 
-            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                <ComboBox Width="240" VerticalContentAlignment="Center"
-                          ItemsSource="{Binding ScanTargets}" SelectedItem="{Binding SelectedScanTarget}"
-                          DisplayMemberPath="DisplayName" ToolTip="What to scan" />
-                <Button Content="Scan" Margin="6,0,0,0" Padding="12,4"
-                        Command="{Binding ScanCommand}" ToolTip="Scan the selected target (again)" />
-                <Button Content="Folder…" Margin="6,0,0,0" Padding="10,4"
-                        Command="{Binding ScanFolderCommand}" ToolTip="Choose a folder and scan it" />
-            </StackPanel>
-        </DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <ComboBox Width="240" ItemsSource="{Binding ScanTargets}" SelectedItem="{Binding SelectedScanTarget}"
+                              DisplayMemberPath="DisplayName" ToolTip="What to scan" />
+                    <Button Content="Scan" Style="{StaticResource Button.Primary}" Margin="6,0,0,0" MinWidth="64"
+                            Command="{Binding ScanCommand}" ToolTip="Scan the selected target (again)" />
+                    <Button Content="Folder…" Margin="6,0,0,0"
+                            Command="{Binding ScanFolderCommand}" ToolTip="Choose a folder and scan it" />
+                    <Rectangle Width="1" Height="22" Margin="10,0,6,0" Fill="{DynamicResource Brush.Line}" />
+                    <ToggleButton Style="{StaticResource Toolbar.IconToggle}" ToolTip="Settings"
+                                  AutomationProperties.Name="Settings"
+                                  IsChecked="{Binding IsSettingsSelected, Mode=TwoWay}">
+                        <Path Data="{StaticResource Icon.Gear}" Style="{StaticResource Icon.Fill}" />
+                    </ToggleButton>
+                </StackPanel>
+            </DockPanel>
+        </Border>
 
-        <!-- Main Content -->
+        <!-- Main content -->
         <Grid Grid.Row="1">
-            <!-- Loading Overlay -->
+            <ContentControl Content="{Binding CurrentViewModel}" Focusable="False"
+                            Visibility="{Binding ShowContent, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+            <!-- Nothing scanned yet (scan on startup is off, or the first scan was cancelled) -->
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Visibility="{Binding ShowEmptyHint, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <TextBlock Text="Nothing scanned yet" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                <TextBlock Text="Choose a drive or folder in the toolbar and press Scan." Margin="0,6,0,0"
+                           Style="{StaticResource Text.Secondary}" HorizontalAlignment="Center" />
+            </StackPanel>
+
+            <!-- Loading overlay -->
             <Grid Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}">
-                <Rectangle Fill="#80000000" />
+                <Rectangle Fill="{DynamicResource Brush.Scrim}" />
                 <StackPanel Width="460" HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <TextBlock Text="Scanning…" FontSize="24" Foreground="White" HorizontalAlignment="Center" />
-                    <ProgressBar IsIndeterminate="True" Height="16" Margin="0,10,0,0" />
-                    <TextBlock Text="{Binding ScanProgressText}" Foreground="White"
-                               HorizontalAlignment="Center" Margin="0,10,0,0" />
-                    <TextBlock Text="{Binding ScanCurrentPath}" Foreground="#DDD" FontSize="11"
+                    <TextBlock Text="Scanning…" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                    <ProgressBar IsIndeterminate="True" Height="4" Margin="0,14,0,0" />
+                    <TextBlock Text="{Binding ScanProgressText}" HorizontalAlignment="Center" Margin="0,12,0,0" />
+                    <TextBlock Text="{Binding ScanCurrentPath}" Style="{StaticResource Text.Muted}" FontSize="11"
                                TextTrimming="CharacterEllipsis" HorizontalAlignment="Center" Margin="0,4,0,0" />
                     <Button Content="Cancel" Command="{Binding CancelScanCommand}"
-                            HorizontalAlignment="Center" Padding="16,4" Margin="0,12,0,0" />
+                            HorizontalAlignment="Center" Padding="18,0" Margin="0,16,0,0" />
                 </StackPanel>
             </Grid>
-
-            <!-- Content Area -->
-            <ContentControl Content="{Binding CurrentViewModel}"
-                            Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}, ConverterParameter=Invert}" />
         </Grid>
 
         <!-- Status Bar -->

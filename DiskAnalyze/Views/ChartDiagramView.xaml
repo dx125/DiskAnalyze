@@ -5,16 +5,9 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:local="clr-namespace:DiskAnalyze.Views"
              xmlns:viewModels="clr-namespace:DiskAnalyze.ViewModels"
+             xmlns:services="clr-namespace:DiskAnalyze.Services"
              mc:Ignorable="d"
              d:DesignHeight="450" d:DesignWidth="800">
-
-    <UserControl.Resources>
-        <Style x:Key="ChartTextStyle" TargetType="TextBlock">
-            <Setter Property="VerticalAlignment" Value="Center" />
-            <Setter Property="FontSize" Value="12" />
-            <Setter Property="Margin" Value="5,0,0,0" />
-        </Style>
-    </UserControl.Resources>
 
     <Grid>
         <Grid.RowDefinitions>
@@ -27,15 +20,18 @@
         </Grid.ColumnDefinitions>
 
         <!-- Navigation Controls -->
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="10">
-            <Button Content="↑ Up" Width="60" Margin="0,0,10,0"
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="10" MinHeight="26">
+            <Button Style="{StaticResource Button.Icon}" Margin="0,0,10,0" ToolTip="Up one level"
+                    AutomationProperties.Name="Up"
                     Command="{Binding NavigateUpCommand}"
-                    Visibility="{Binding CanNavigateUp, Converter={StaticResource BooleanToVisibilityConverter}}" />
-            <TextBlock Text="{Binding CurrentPath}" VerticalAlignment="Center" />
+                    Visibility="{Binding CanNavigateUp, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Path Data="{StaticResource Icon.ChevronUp}" Style="{StaticResource Icon.Stroke}" />
+            </Button>
+            <TextBlock Text="{Binding CurrentPath}" VerticalAlignment="Center" FontWeight="SemiBold" />
         </StackPanel>
 
         <!-- Chart Area: virtualized, so folders with tens of thousands of entries stay responsive -->
-        <ItemsControl Grid.Row="1" Margin="10" ItemsSource="{Binding DisplayedEntities}"
+        <ItemsControl Grid.Row="1" Margin="10,0,10,10" ItemsSource="{Binding DisplayedEntities}"
                       VirtualizingPanel.IsVirtualizing="True"
                       VirtualizingPanel.VirtualizationMode="Recycling"
                       VirtualizingPanel.ScrollUnit="Pixel">
@@ -55,7 +51,8 @@
             <ItemsControl.ItemTemplate>
                 <DataTemplate DataType="{x:Type viewModels:FileSystemEntityViewModel}">
                     <!-- The whole row is clickable and carries the context menu -->
-                    <Border x:Name="Row" Background="Transparent" Padding="0,3" CornerRadius="3"
+                    <Border x:Name="Row" Background="Transparent" Padding="6,5" BorderThickness="0,0,0,1"
+                            BorderBrush="{DynamicResource Brush.Line}"
                             Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
                         <Border.InputBindings>
                             <MouseBinding MouseAction="LeftClick"
@@ -81,35 +78,44 @@
                                 <ColumnDefinition Width="90" />
                                 <ColumnDefinition Width="20" />
                             </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
 
-                            <!-- Bar track: the bar takes PercentageOfTotal of the available width -->
-                            <Grid Grid.Column="0" Height="25">
+                            <!-- Label above the bar, so text never sits on a coloured fill -->
+                            <DockPanel Grid.Column="0" Grid.Row="0">
+                                <TextBlock Text="{Binding UsageInfo}" DockPanel.Dock="Right" Margin="12,0,0,0"
+                                           Style="{StaticResource Text.Secondary}"
+                                           Visibility="{Binding IsDrive, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                            </DockPanel>
+
+                            <!-- Bar: takes PercentageOfTotal of the available width -->
+                            <Grid Grid.Column="0" Grid.Row="1" Height="8" Margin="0,4,0,0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="{Binding PercentageOfTotal, Converter={StaticResource PercentToStarConverter}}" />
                                     <ColumnDefinition Width="{Binding PercentageOfTotal, Converter={StaticResource PercentToStarConverter}, ConverterParameter=Remainder}" />
                                 </Grid.ColumnDefinitions>
 
-                                <Rectangle Grid.Column="0" MinWidth="3" RadiusX="3" RadiusY="3" Stroke="White" StrokeThickness="1">
+                                <Rectangle Grid.Column="0" MinWidth="2" SnapsToDevicePixels="True">
                                     <Rectangle.Fill>
                                         <MultiBinding Converter="{StaticResource EntityBrushConverter}">
                                             <Binding Path="ColorIndex" />
                                             <Binding Path="IsOtherCategory" />
+                                            <Binding Source="{x:Static services:ThemeManager.Instance}" Path="ActualTheme" />
                                         </MultiBinding>
                                     </Rectangle.Fill>
                                 </Rectangle>
-
-                                <StackPanel Grid.Column="0" Grid.ColumnSpan="2" Orientation="Horizontal" VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding Name}" Style="{StaticResource ChartTextStyle}" />
-                                    <TextBlock Text="{Binding UsageInfo}" Style="{StaticResource ChartTextStyle}" Foreground="#333"
-                                               Visibility="{Binding IsDrive, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                </StackPanel>
                             </Grid>
 
-                            <TextBlock Grid.Column="1" Text="{Binding Size, Converter={StaticResource FileSizeConverter}}"
+                            <TextBlock Grid.Column="1" Grid.RowSpan="2" Text="{Binding Size, Converter={StaticResource FileSizeConverter}}"
                                        HorizontalAlignment="Right" VerticalAlignment="Center" />
 
                             <!-- Drill-down marker for directories, in its own column so it never covers the label -->
-                            <Path Grid.Column="2" Data="M0,0 L5,5 L0,10" Stroke="#888" StrokeThickness="1.5"
+                            <Path Grid.Column="2" Grid.RowSpan="2" Data="{StaticResource Icon.ChevronRight}"
+                                  Stroke="{DynamicResource Brush.TextMuted}" StrokeThickness="1.4"
+                                  StrokeStartLineCap="Square" StrokeEndLineCap="Square"
                                   HorizontalAlignment="Center" VerticalAlignment="Center"
                                   Visibility="{Binding IsDirectory, Converter={StaticResource BooleanToVisibilityConverter}}" />
                         </Grid>
@@ -117,7 +123,7 @@
 
                     <DataTemplate.Triggers>
                         <Trigger SourceName="Row" Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Row" Property="Background" Value="#14000000" />
+                            <Setter TargetName="Row" Property="Background" Value="{DynamicResource Brush.Hover}" />
                         </Trigger>
                         <DataTrigger Binding="{Binding IsDirectory}" Value="True">
                             <Setter TargetName="Row" Property="Cursor" Value="Hand" />

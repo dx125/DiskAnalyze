@@ -1,3 +1,4 @@
+using DiskAnalyze.Services;
 using System.Globalization;
 using System.Windows.Data;
 using System.Windows.Media;
@@ -5,46 +6,40 @@ using System.Windows.Media;
 namespace DiskAnalyze.Converters
 {
     /// <summary>
-    /// Fill for a diagram segment. Bindings: [0] ColorIndex (int), [1] IsOtherCategory (bool),
-    /// [2] optional IsHovered (bool). Being a MultiBinding, it re-evaluates when IsHovered changes,
-    /// which a plain <c>{Binding}</c> to the entity object never does.
+    /// Fill of a diagram segment, or with ConverterParameter "Label" the text colour for a label drawn on
+    /// that fill. Bindings: [0] ColorIndex (int), [1] IsOtherCategory (bool), [2] IsHovered (bool, optional),
+    /// [3] <see cref="ThemeManager.ActualTheme"/> (optional). Being a MultiBinding, it re-evaluates when
+    /// IsHovered or the theme changes, which a plain <c>{Binding}</c> to the entity object never does.
+    /// Colours come from the active theme's Color.Series0…7 / Color.Other tokens.
     /// </summary>
     public class EntityBrushConverter : IMultiValueConverter
     {
-        // Indexed by size rank. The pie shows ranks 0-4, which are always distinct;
-        // the tones are light enough for the black labels drawn on top.
-        private static readonly Color[] Palette =
-        {
-            Color.FromRgb(0x5B, 0x9B, 0xD5), // blue
-            Color.FromRgb(0xF2, 0x8E, 0x2B), // orange
-            Color.FromRgb(0x6C, 0xBF, 0x5A), // green
-            Color.FromRgb(0xE1, 0x57, 0x59), // red
-            Color.FromRgb(0xB0, 0x7A, 0xA1), // purple
-            Color.FromRgb(0xED, 0xC9, 0x48), // yellow
-            Color.FromRgb(0x76, 0xB7, 0xB2), // teal
-            Color.FromRgb(0xFF, 0x9D, 0xA7)  // pink
-        };
+        private const int SlotCount = 8;
+        private const int OtherSlot = -1;
 
-        private static readonly Color OtherColor = Color.FromRgb(0xB0, 0xB0, 0xB0);
-
-        private static readonly SolidColorBrush[] NormalBrushes = Palette.Select(CreateFrozen).ToArray();
-        private static readonly SolidColorBrush[] HoveredBrushes = Palette.Select(c => CreateFrozen(Brighten(c))).ToArray();
-        private static readonly SolidColorBrush OtherBrush = CreateFrozen(OtherColor);
-        private static readonly SolidColorBrush OtherHoveredBrush = CreateFrozen(Brighten(OtherColor));
+        private readonly Dictionary<(AppTheme Theme, int Slot, bool Label, bool Hovered), Brush> _cache = new();
 
         public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
         {
             int index = values.Length > 0 && values[0] is int i ? i : 0;
             bool isOther = values.Length > 1 && values[1] is bool other && other;
             bool isHovered = values.Length > 2 && values[2] is bool hovered && hovered;
+            bool isLabel = parameter as string == "Label";
 
-            if (isOther)
+            // Bars list every item, so ranks past the palette wrap around; the pie never gets that far
+            // (AppSettings.MaxPieSlices).
+            int slot = isOther ? OtherSlot : (index % SlotCount + SlotCount) % SlotCount;
+            var theme = ThemeManager.Instance.ActualTheme;
+            bool hoverFill = isHovered && !isLabel;
+            var key = (theme, slot, isLabel, hoverFill);
+
+            if (!_cache.TryGetValue(key, out var brush))
             {
-                return isHovered ? OtherHoveredBrush : OtherBrush;
+                brush = CreateBrush(theme, slot, isLabel, hoverFill);
+                _cache[key] = brush;
             }
 
-            int slot = (index % Palette.Length + Palette.Length) % Palette.Length;
-            return isHovered ? HoveredBrushes[slot] : NormalBrushes[slot];
+            return brush;
         }
 
         public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
@@ -52,16 +47,32 @@ namespace DiskAnalyze.Converters
             throw new NotSupportedException();
         }
 
-        private static Color Brighten(Color color) => Color.FromRgb(
-            (byte)Math.Min(255, color.R + 40),
-            (byte)Math.Min(255, color.G + 40),
-            (byte)Math.Min(255, color.B + 40));
-
-        private static SolidColorBrush CreateFrozen(Color color)
+        private static Brush CreateBrush(AppTheme theme, int slot, bool isLabel, bool isHovered)
         {
+            string key = (isLabel, slot) switch
+            {
+                (true, OtherSlot) => "Color.OtherLabel",
+                (true, _) => $"Color.SeriesLabel{slot}",
+                (false, OtherSlot) => "Color.Other",
+                _ => $"Color.Series{slot}"
+            };
+
+            var color = System.Windows.Application.Current?.TryFindResource(key) is Color c ? c : Colors.Gray;
+
+            // Hover moves the fill away from the background: lighter on dark, darker on light.
+            if (isHovered)
+            {
+                color = theme == AppTheme.Dark ? Mix(color, Colors.White, 0.22) : Mix(color, Colors.Black, 0.15);
+            }
+
             var brush = new SolidColorBrush(color);
             brush.Freeze();
             return brush;
         }
+
+        private static Color Mix(Color color, Color target, double amount) => Color.FromRgb(
+            (byte)Math.Round(color.R + (target.R - color.R) * amount),
+            (byte)Math.Round(color.G + (target.G - color.G) * amount),
+            (byte)Math.Round(color.B + (target.B - color.B) * amount));
     }
 }

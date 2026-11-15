@@ -1,8 +1,26 @@
+using DiskAnalyze.Application.Settings;
+
 namespace DiskAnalyze.ViewModels
 {
     public class CircularDiagramViewModel : DiagramViewModelBase
     {
-        private const int MaxDisplayedItems = 5;
+        private int _sliceCount = AppSettings.DefaultPieSlices;
+
+        /// <summary>
+        /// How many of the largest items get their own slice; the rest are grouped as "Other".
+        /// Set from the Settings view (<see cref="AppSettings.PieSlices"/>); a change redraws the pie.
+        /// </summary>
+        public int SliceCount
+        {
+            get => _sliceCount;
+            set
+            {
+                if (SetProperty(ref _sliceCount, Math.Clamp(value, AppSettings.MinPieSlices, AppSettings.MaxPieSlices)))
+                {
+                    RefreshDisplayedEntities();
+                }
+            }
+        }
 
         protected override IReadOnlyList<FileSystemEntityViewModel> CreateDisplayedEntities()
         {
@@ -11,12 +29,12 @@ namespace DiskAnalyze.ViewModels
                 .OrderByDescending(c => c.Size)
                 .ToList();
 
-            var entities = sortedChildren.Take(MaxDisplayedItems).ToList();
+            var entities = sortedChildren.Take(SliceCount).ToList();
 
             // Group everything beyond the top items into a single "Other" slice
-            if (sortedChildren.Count > MaxDisplayedItems)
+            if (sortedChildren.Count > SliceCount)
             {
-                var otherItems = sortedChildren.Skip(MaxDisplayedItems).ToList();
+                var otherItems = sortedChildren.Skip(SliceCount).ToList();
 
                 entities.Add(new OtherCategoryViewModel
                 {
