@@ -64,7 +64,7 @@ Composition root: `MainWindow` constructor (no DI container).
 | 2026-06-11 | `fac6e25` | Repository created (MIT license only). |
 | 2026-06-30 | `6661c76` | Whole application landed in one commit (≈2.5k lines): parallel scanner, pie and bar diagrams with drill-down, "Other" bucket, hover tooltips, segment-contents side panel, drive usage %, two-folder duplicate finder. The commit message describes only the final UI fixes: diagram hidden while loading, side-panel column collapses to zero width when empty, "Show in Explorer" context menu. Earlier iterations are not in git. |
 | 2026-11-14 | `8b91848` | Project review; this document created. Planned two features: folder content types (§6.1) and a photo browser with content filters (§6.2, feasibility analysis). |
-| 2026-11-14 | — | Review fixes on branch `review-fixes`. Retargeted to .NET 10. Fixed I-1–I-4, I-6, I-8, I-10, I-11, I-13–I-17; partly fixed I-9 and I-12 (§4). New: scan target picker, Rescan, Cancel, live progress, OneDrive support, 27 xUnit tests, README. Smoke-tested in the running app: a full scan of all fixed drives (≈1.3 TB) took 22 s cold and 5 s warm. |
+| 2026-11-14 | `01928cf` | Review fixes (developed on branch `review-fixes`, fast-forwarded into `main`). Retargeted to .NET 10. Fixed I-1–I-4, I-6, I-8, I-10, I-11, I-13–I-17; partly fixed I-9 and I-12 (§4). New: scan target picker, Rescan, Cancel, live progress, OneDrive support, 27 xUnit tests, README. Smoke-tested in the running app: a full scan of all fixed drives (≈1.3 TB) took 22 s cold and 5 s warm. |
 
 ---
 
@@ -104,7 +104,7 @@ this file's git history.
 - **I-3. Pie slices often shared a color.** Colors now follow size rank (D-023).
 - **I-4. Bar view was not virtualized.** It now uses a `VirtualizingStackPanel` with recycling and pixel scrolling.
 - **I-6. Allocation-heavy enumeration.** Each directory is read in one `FileSystemEnumerable<T>` pass with no `FileInfo` objects; progress counters are published once per directory.
-- **I-8. OneDrive was skipped entirely.** Only real links (`LinkTarget != null`) are skipped now. Cloud-only files count as 0 bytes and are never hashed (D-022). Verified on the dev machine: OneDrive now yields 538 folders and 3,169 files, 2,916 of them cloud-only (1.2 GB logical, not counted).
+- **I-8. OneDrive was skipped entirely.** Only real links (`LinkTarget != null`) are skipped now. Cloud-only files count as 0 bytes and are never hashed (D-022). Verified against a real OneDrive folder: its subfolders are now scanned, and online-only files are marked cloud-only instead of being counted at their logical size.
 - **I-10. No way to choose, cancel or rescan.** Added a scan target picker, Scan, Folder… and Cancel; the initial scan starts on window `Loaded` (D-024).
 - **I-11. No scan progress.** Live counters update every 200 ms.
 - **I-13. Minor UI.** Labels are hidden under 4%; bars are star-sized; the view switcher is a set of toggles; clicking "Other" lists its members; the whole bar row is the click target. Directory rows are no longer magnified by 2% (that overflowed full-width rows); a chevron column marks folders instead.
@@ -239,7 +239,7 @@ out of scope.
 | ImageNet classifier (ResNet/MobileNet via ML.NET or ONNX) | Object labels; poor at scenes and time of day | fixed 1000 | yes | no |
 | Places365 scene classifier | Good scenes; no "sunset" or "people" | fixed 365 | yes | no |
 | **CLIP / SigLIP zero-shot on ONNX Runtime** | Good at scenes, time of day, people, documents, screenshots | **any text prompt**, free-text search, similarity | yes | **chosen** |
-| Windows AI APIs (Windows App SDK image description / object APIs) | Good | limited | yes | Needs a Copilot+ NPU; the dev machine has none |
+| Windows AI APIs (Windows App SDK image description / object APIs) | Good | limited | yes | Needs a Copilot+ PC with an NPU; not available on typical desktops |
 | Cloud vision APIs (Azure, Google) | Best labels | fixed | **no**: uploads private photos; paid | no |
 | Local captioning VLM (e.g. Florence-2) | Rich captions | any | yes | Heavy (~0.3–1 s per image); maybe later for captions |
 
@@ -253,8 +253,8 @@ under 10 ms.
 
 **Pipeline**
 1. **Source.** Image files from the existing scan tree (extensions), or a folder chosen in the photo window.
-2. **Input pixels: Windows Shell thumbnails** (`IShellItemImageFactory`, 256 px; CLIP needs 224 px). They are fast thanks to the OS thumbnail cache and cover HEIC/RAW wherever codecs are installed. Most importantly, they work for **cloud-only OneDrive files without downloading the original**; B0 must confirm this. On the dev machine, Pictures is redirected to OneDrive and most images are cloud-only, so decoding originals would mean downloading the whole library. Fallback for local files: WIC decode with `DecodePixelWidth` (JPEG DCT scaling).
-3. **Inference.** ONNX Runtime with a GPU execution provider (DirectML or CUDA on the RTX-class GPU; Windows ML packaging is another route — decide in B0), CPU fallback, batches of 32–64.
+2. **Input pixels: Windows Shell thumbnails** (`IShellItemImageFactory`, 256 px; CLIP needs 224 px). They are fast thanks to the OS thumbnail cache and cover HEIC/RAW wherever codecs are installed. Most importantly, they work for **cloud-only OneDrive files without downloading the original**; B0 must confirm this. When Pictures is redirected to OneDrive (a common default), most images may be cloud-only, so decoding originals would mean downloading the whole library. Fallback for local files: WIC decode with `DecodePixelWidth` (JPEG DCT scaling).
+3. **Inference.** ONNX Runtime with a GPU execution provider (DirectML, or CUDA on NVIDIA GPUs; Windows ML packaging is another route — decide in B0), CPU fallback, batches of 32–64.
 4. **Text side.** B2 ships precomputed prompt embeddings (JSON generated once), so the app needs no tokenizer. B3 adds the text encoder plus the CLIP BPE tokenizer (`Microsoft.ML.Tokenizers` with vocab and merges files) for free-text search.
 5. **Index cache.** SQLite at `%LOCALAPPDATA%\DiskAnalyze\photos.db`, keyed by path + size + mtime. Columns: dimensions, EXIF date, GPS, camera, embedding, face count, category scores. Re-indexing is incremental.
 6. **People (B4, optional).** A small face detector gives a face count and makes people/portrait/group filters more reliable than CLIP alone. Face *recognition* (who) is out of scope for privacy and complexity reasons.
@@ -367,7 +367,7 @@ treemap/sunburst. Details: §6.1.
 Zero-shot classification against text prompts. Input comes from Shell thumbnails, so cloud-only files
 are not downloaded. Embeddings are cached in local SQLite. No cloud APIs, no face recognition. Why:
 arbitrary filters plus free-text search and near-duplicate detection from one model, private, free,
-and fast on the dev machine's GPU. Windows AI APIs were rejected because they need an NPU. Validate
+and fast on a discrete GPU. Windows AI APIs were rejected because they need an NPU. Validate
 with spike B0 before committing to the full plan. Details: §6.2.
 
 **D-021 — Nested folders in duplicate search: "rest of outer" vs "inner"** (2026-11-14, accepted)
@@ -403,5 +403,5 @@ Used minus scanned includes NTFS metadata, which grows with volume size: an empt
 
 **D-026 — Target .NET 10 LTS** (2026-11-14, accepted)
 .NET 8 left support on 2026-11-10. There is no `global.json`, so any installed SDK ≥ 10 builds the
-solution; the dev machine currently builds with the .NET 11 RC SDK, which fetches the .NET 10
-reference packs. Installing the .NET 10 GA SDK is still recommended. Tests use xUnit 2.9.
+solution; newer SDKs, including .NET 11 previews, fetch the .NET 10 reference packs on their own.
+Installing the .NET 10 GA SDK is still recommended. Tests use xUnit 2.9.
