@@ -1,3 +1,7 @@
+using DiskAnalyze.Core;
+using DiskAnalyze.Services;
+using System.Windows.Input;
+
 namespace DiskAnalyze.ViewModels
 {
     /// <summary>
@@ -17,5 +21,18 @@ namespace DiskAnalyze.ViewModels
         public long Size { get; init; }
 
         public string Extension { get; init; } = string.Empty;
+
+        /// <summary>Alternates per duplicate group, so rows of the same group can be shaded together.</summary>
+        public bool IsAlternateGroup { get; init; }
+
+        public ICommand ShowLeftInExplorerCommand { get; }
+
+        public ICommand ShowRightInExplorerCommand { get; }
+
+        public DuplicateMatchViewModel()
+        {
+            ShowLeftInExplorerCommand = new RelayCommand(() => ShellActions.ShowInExplorer(LeftFullPath), () => LeftFullPath != null);
+            ShowRightInExplorerCommand = new RelayCommand(() => ShellActions.ShowInExplorer(RightFullPath), () => RightFullPath != null);
+        }
     }
 }

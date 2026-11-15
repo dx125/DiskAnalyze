@@ -3,30 +3,29 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:DiskAnalyze"
         xmlns:views="clr-namespace:DiskAnalyze.Views"
         xmlns:viewModels="clr-namespace:DiskAnalyze.ViewModels"
-        xmlns:converters="clr-namespace:DiskAnalyze.Converters"
         mc:Ignorable="d"
-        Title="File System Analyzer" Height="600" Width="800">
+        Title="DiskAnalyze" Height="650" Width="980">
 
     <Window.Resources>
-        <converters:InvertibleBooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
-
-        <!-- Data Template for CircularDiagramViewModel -->
         <DataTemplate DataType="{x:Type viewModels:CircularDiagramViewModel}">
             <views:CircularDiagramView />
         </DataTemplate>
 
-        <!-- Data Template for ChartDiagramViewModel -->
         <DataTemplate DataType="{x:Type viewModels:ChartDiagramViewModel}">
             <views:ChartDiagramView />
         </DataTemplate>
 
-        <!-- Data Template for DuplicatesViewModel -->
         <DataTemplate DataType="{x:Type viewModels:DuplicatesViewModel}">
             <views:DuplicatesView />
         </DataTemplate>
+
+        <!-- View switcher: radio buttons drawn as toggle buttons, so the active view stays pressed -->
+        <Style x:Key="ViewToggleStyle" TargetType="RadioButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+            <Setter Property="Margin" Value="0,0,6,0" />
+            <Setter Property="Padding" Value="10,5" />
+        </Style>
     </Window.Resources>
 
     <Grid>
@@ -36,21 +35,42 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Top Menu -->
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="10">
-            <Button Content="Circular Diagram" Margin="5" Padding="10,5" Command="{Binding ShowCircularDiagramCommand}" />
-            <Button Content="Chart Diagram" Margin="5" Padding="10,5" Command="{Binding ShowChartDiagramCommand}" />
-            <Button Content="Find Duplicates" Margin="5" Padding="10,5" Command="{Binding ShowDuplicatesCommand}" />
-        </StackPanel>
+        <!-- Toolbar -->
+        <DockPanel Grid.Row="0" Margin="10,10,10,4" LastChildFill="False">
+            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                <RadioButton Content="Circular Diagram" Style="{StaticResource ViewToggleStyle}"
+                             IsChecked="{Binding IsCircularSelected, Mode=TwoWay}" />
+                <RadioButton Content="Chart Diagram" Style="{StaticResource ViewToggleStyle}"
+                             IsChecked="{Binding IsChartSelected, Mode=TwoWay}" />
+                <RadioButton Content="Find Duplicates" Style="{StaticResource ViewToggleStyle}"
+                             IsChecked="{Binding IsDuplicatesSelected, Mode=TwoWay}" />
+            </StackPanel>
+
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <ComboBox Width="240" VerticalContentAlignment="Center"
+                          ItemsSource="{Binding ScanTargets}" SelectedItem="{Binding SelectedScanTarget}"
+                          DisplayMemberPath="DisplayName" ToolTip="What to scan" />
+                <Button Content="Scan" Margin="6,0,0,0" Padding="12,4"
+                        Command="{Binding ScanCommand}" ToolTip="Scan the selected target (again)" />
+                <Button Content="Folder…" Margin="6,0,0,0" Padding="10,4"
+                        Command="{Binding ScanFolderCommand}" ToolTip="Choose a folder and scan it" />
+            </StackPanel>
+        </DockPanel>
 
         <!-- Main Content -->
         <Grid Grid.Row="1">
             <!-- Loading Overlay -->
             <Grid Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <Rectangle Fill="#80000000" />
-                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <TextBlock Text="Loading..." FontSize="24" Foreground="White" HorizontalAlignment="Center" />
-                    <ProgressBar IsIndeterminate="True" Width="200" Height="20" Margin="0,10,0,0" />
+                <StackPanel Width="460" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Text="Scanning…" FontSize="24" Foreground="White" HorizontalAlignment="Center" />
+                    <ProgressBar IsIndeterminate="True" Height="16" Margin="0,10,0,0" />
+                    <TextBlock Text="{Binding ScanProgressText}" Foreground="White"
+                               HorizontalAlignment="Center" Margin="0,10,0,0" />
+                    <TextBlock Text="{Binding ScanCurrentPath}" Foreground="#DDD" FontSize="11"
+                               TextTrimming="CharacterEllipsis" HorizontalAlignment="Center" Margin="0,4,0,0" />
+                    <Button Content="Cancel" Command="{Binding CancelScanCommand}"
+                            HorizontalAlignment="Center" Padding="16,4" Margin="0,12,0,0" />
                 </StackPanel>
             </Grid>
 

@@ -4,15 +4,16 @@ Living document: project history, current state, known issues, roadmap, design n
 Update it together with the code: add a History entry per meaningful change, tick roadmap items,
 and record non-obvious choices in the Decision Log.
 
-- **What:** Windows disk-usage analyzer. It scans drives, shows where space goes (pie and bar views
-  with drill-down) and finds files duplicated between two folders.
+- **What:** Windows disk-usage analyzer. It scans drives or folders, shows where space goes (pie and
+  bar views with drill-down) and finds files duplicated between two folders.
 - **Goal:** personal tool. Usability, speed and useful features come before release engineering
   (installer, signing, auto-update). See D-018.
-- **Stack:** C# / WPF / MVVM (hand-rolled), currently `net8.0` + `net8.0-windows`.
-- **Build / run:**
+- **Stack:** C# / WPF / MVVM (hand-rolled), `net10.0` + `net10.0-windows`; xUnit tests.
+- **Build / run / test:**
   ```
   dotnet build DiskAnalyze.sln
   dotnet run --project DiskAnalyze/DiskAnalyze.csproj
+  dotnet test DiskAnalyze.sln
   ```
 
 ---
@@ -20,25 +21,37 @@ and record non-obvious choices in the Decision Log.
 ## 1. Architecture snapshot
 
 ```
-DiskAnalyze.Application (net8.0, UI-agnostic)
-├─ AnalyzeService/   AnalyzeDiskService → DirectoryTreeScanner (parallel, Channel-based)
-├─ DiskEntities/     BaseFileSystemEntity, DirectoryEntityInfo (Children, CalculateSize), FileEntityInfo
-└─ Duplicates/       DuplicateFinderService (size+ext prefilter → SHA-256), DuplicateFileGroup
+DiskAnalyze.Application (net10.0, UI-agnostic)
+├─ AnalyzeService/   AnalyzeDiskService → DirectoryTreeScanner (parallel, Channel-based,
+│                    one FileSystemEnumerable pass per directory), ScanProgress,
+│                    CloudFiles (online-only placeholder detection)
+├─ DiskEntities/     BaseFileSystemEntity, DirectoryEntityInfo (Children, iterative CalculateSize),
+│                    FileEntityInfo (IsCloudOnly)
+└─ Duplicates/       DuplicateFinderService (size+ext prefilter → SHA-256, nesting-aware),
+                     DuplicateFileGroup (ReclaimableBytes), DuplicateSearchProgress
 
-DiskAnalyze (net8.0-windows, WPF)
+DiskAnalyze (net10.0-windows, WPF)
 ├─ Core/             ViewModelBase, RelayCommand, FileSizeFormatter
-├─ Services/         FileSystemService: domain tree → view-model tree, drive usage %
-├─ ViewModels/       MainViewModel (view switching, loading), DiagramViewModelBase
-│                    (navigation, side panel, Show in Explorer), Circular/Chart/Duplicates VMs
+├─ Services/         FileSystemService (scan targets; domain tree → VM tree; drive usage and
+│                    "not scanned"), ScanTarget, ShellActions (Show in Explorer)
+├─ ViewModels/       MainViewModel (view switching, scan / rescan / cancel, progress),
+│                    DiagramViewModelBase (navigation, rank colors, side panel, Show in Explorer),
+│                    Circular/Chart/Duplicates VMs
 ├─ Views/            MainWindow, CircularDiagramView (pie geometry + hit testing in code-behind),
-│                    ChartDiagramView, DuplicatesView, SegmentContentsView (side panel)
-└─ Converters/       size, color/brush, visibility, percent→width, bool→GridLength, scale
+│                    ChartDiagramView (virtualized), DuplicatesView, SegmentContentsView (side panel)
+└─ Converters/       shared in App.xaml: entity brush (rank palette + hover), size, visibility,
+                     percent→star width, percent threshold, bool→GridLength, scale
+
+DiskAnalyze.Application.Tests (net10.0, xUnit)
+                     scanner on temp dirs (incl. junctions), sizes, cloud attributes, duplicates
 ```
 
-Data flow: `MainViewModel` constructor → `FileSystemService.LoadFileSystemDataAsync()` →
-`AnalyzeAllDrivesAsync()` scans every fixed drive → full domain tree → converted to a full VM tree
-off the UI thread → the same VM tree is shared by the Circular and Chart views.
-The Duplicates view runs its own independent scans of the two selected folders.
+Data flow: `MainWindow.Loaded` → `MainViewModel.StartInitialScan()` →
+`FileSystemService.LoadFileSystemDataAsync(target paths, progress, ct)` → `AnalyzePathsAsync` scans
+in parallel and reports progress every 200 ms → domain tree → VM tree built off the UI thread → the
+same root is shared by the pie and bar views. A single drive or folder target becomes the root itself;
+"All fixed drives" adds a synthetic "This PC" parent. Cancel keeps the previous results.
+The Duplicates view runs its own scans of the two selected folders.
 
 Composition root: `MainWindow` constructor (no DI container).
 
@@ -50,62 +63,66 @@ Composition root: `MainWindow` constructor (no DI container).
 |---|---|---|
 | 2026-06-11 | `fac6e25` | Repository created (MIT license only). |
 | 2026-06-30 | `6661c76` | Whole application landed in one commit (≈2.5k lines): parallel scanner, pie and bar diagrams with drill-down, "Other" bucket, hover tooltips, segment-contents side panel, drive usage %, two-folder duplicate finder. The commit message describes only the final UI fixes: diagram hidden while loading, side-panel column collapses to zero width when empty, "Show in Explorer" context menu. Earlier iterations are not in git. |
-| 2026-11-14 | — | Project review; this document created. Build is clean (0 warnings). No tests exist. |
-| 2026-11-14 | — | Planned two features: folder content types (§6.1) and a photo browser with content filters (§6.2, feasibility analysis). Confirmed I-8 on the dev machine. |
+| 2026-11-14 | `8b91848` | Project review; this document created. Planned two features: folder content types (§6.1) and a photo browser with content filters (§6.2, feasibility analysis). |
+| 2026-11-14 | — | Review fixes on branch `review-fixes`. Retargeted to .NET 10. Fixed I-1–I-4, I-6, I-8, I-10, I-11, I-13–I-17; partly fixed I-9 and I-12 (§4). New: scan target picker, Rescan, Cancel, live progress, OneDrive support, 27 xUnit tests, README. Smoke-tested in the running app: a full scan of all fixed drives (≈1.3 TB) took 22 s cold and 5 s warm. |
 
 ---
 
 ## 3. Current state — what works
 
 **Scanning**
-- [x] Scans all ready fixed drives at startup, in parallel (one worker per CPU core).
-- [x] Skips junctions and symlinks (no cycles or double counting).
-- [x] Silently skips inaccessible folders (`UnauthorizedAccessException` / `IOException`).
-- [x] Directory sizes computed in a single post-pass.
-- [x] Drive roots show real "% used" from `DriveInfo`.
+- [x] Scan target picker: all fixed drives, one drive, or any folder ("Folder…"); **Scan** rescans; **Cancel** keeps the previous results.
+- [x] Live progress: files, folders, bytes, elapsed time, current path.
+- [x] Parallel scan (one worker per core), one enumeration pass per directory, hidden and system files included.
+- [x] Skips only real links (junctions, symlinks); other reparse points such as OneDrive cloud folders are scanned.
+- [x] Cloud-only (online-only) files count as 0 bytes and are marked "cloud only" in the side panel.
+- [x] Inaccessible folders are skipped. Drive rows show "% used" and, when the gap is above 1% of capacity, "N GB not scanned".
 
 **Visualization**
-- [x] Pie view: top 5 children plus an "Other" slice, hover magnify with tooltip, click a folder to drill down, "Up" button.
-- [x] Bar view: all non-empty children sorted by size, click a folder to drill down.
-- [x] Context menu: "Show contents" (side panel listing immediate children, largest first) and "Show in Explorer" (folders open, files are revealed selected; hidden for "Other").
-- [x] Loading overlay and status bar.
+- [x] Pie view: top 5 plus "Other", rank-based colors (never repeated within the top 5). Hover brightens and magnifies the slice and shows a tooltip (size, % used, modified date). Labels are hidden on slices under 4%. Click a folder to drill down; click "Other" to list its members.
+- [x] Bar view: all non-empty children, virtualized; bars scale with the window width; the whole row is clickable; folders get a chevron.
+- [x] Context menu: "Show contents" and "Show in Explorer". The side panel has a close button and tooltips with path and modified date.
+- [x] The toolbar highlights the active view.
 
 **Duplicates**
-- [x] Compare two folders: prefilter by (size, extension), confirm with SHA-256, side-by-side grid, full paths in a tooltip.
-- [x] Guards against the same physical file appearing on both sides (but see issue I-1).
+- [x] Compare two folders. Nested selections compare "rest of outer" vs. "inner". Empty and cloud-only files are ignored.
+- [x] Per-phase progress and Cancel. Summary: groups, files and reclaimable bytes. Rows of the same group share a background; the context menu reveals file A or B in Explorer.
+
+**Quality**
+- [x] 27 xUnit tests for the Application layer; README.
 
 ---
 
 ## 4. Known issues & tech debt
 
-Found in the 2026-11-14 review. Each item has a concrete location and failure scenario.
+Found in the 2026-11-14 review. Fixed items are summarized; the original failure scenarios are in
+this file's git history.
 
-### Bugs
-- **I-1. Nested folder selection loses real duplicates.** In `DuplicateFinderService.cs:52-54`, a right-side file is dropped if its path appears anywhere on the left. Example: A = `D:\Photos`, B = `D:\Photos\2020`, with identical `D:\Photos\x.jpg` and `D:\Photos\2020\x.jpg`. Left = `[Photos\x.jpg, Photos\2020\x.jpg]`, right = `[Photos\2020\x.jpg]`. The right file is removed because it is also on the left, so the group is discarded and the genuine duplicate is never shown. Fix: remove the overlapping paths from the superset side instead, then require both sides to be non-empty. Cover this case with a test.
-- **I-2. Hover brightening never renders.** `Fill="{Binding Converter=FileSystemEntityToBrushConverter}"` binds to the entity object itself (`CircularDiagramView.xaml:67`, `ChartDiagramView.xaml:75`). A change to `IsHovered` doesn't re-run the converter, so the bright-color branch in `FileSystemEntityToBrushConverter.cs:18` is dead in practice; only the scale effect works. Fix: use a `MultiBinding` on (entity, `IsHovered`) or a `DataTrigger`.
-- **I-3. Pie slices often share a color.** The color is picked by name hash from 7 colors (`FileSystemEntityToColorConverter.cs:34`). For 5 slices, P(all distinct) = 7·6·5·4·3 / 7⁵ ≈ 15%, so about 85% of directories show at least two same-colored slices. Fix: color pie slices by index; keep hash colors only where stability across views matters.
+### Fixed (2026-11-14, branch `review-fixes`)
+- **I-1. Nested folder selection lost real duplicates.** Example: A = `Photos`, B = `Photos\2020`, identical `Photos\x.jpg` and `Photos\2020\x.jpg`. Filtering is now nesting-aware (D-021). Regression tests cover both directions and "a file is never its own duplicate".
+- **I-2. Hover brightening never rendered.** `EntityBrushConverter` is now a `MultiBinding` over (`ColorIndex`, `IsOtherCategory`, `IsHovered`).
+- **I-3. Pie slices often shared a color.** Colors now follow size rank (D-023).
+- **I-4. Bar view was not virtualized.** It now uses a `VirtualizingStackPanel` with recycling and pixel scrolling.
+- **I-6. Allocation-heavy enumeration.** Each directory is read in one `FileSystemEnumerable<T>` pass with no `FileInfo` objects; progress counters are published once per directory.
+- **I-8. OneDrive was skipped entirely.** Only real links (`LinkTarget != null`) are skipped now. Cloud-only files count as 0 bytes and are never hashed (D-022). Verified on the dev machine: OneDrive now yields 538 folders and 3,169 files, 2,916 of them cloud-only (1.2 GB logical, not counted).
+- **I-10. No way to choose, cancel or rescan.** Added a scan target picker, Scan, Folder… and Cancel; the initial scan starts on window `Loaded` (D-024).
+- **I-11. No scan progress.** Live counters update every 200 ms.
+- **I-13. Minor UI.** Labels are hidden under 4%; bars are star-sized; the view switcher is a set of toggles; clicking "Other" lists its members; the whole bar row is the click target. Directory rows are no longer magnified by 2% (that overflowed full-width rows); a chevron column marks folders instead.
+- **I-14. Dead code.** Removed `Styles.xaml`, unused App styles, `AnalyzeDriveAsync`, and the old color and width converters. `LastModified` is now shown in tooltips. Shared converters moved to `App.xaml`.
+- **I-15. No tests and no README.** Added `DiskAnalyze.Application.Tests` (27 tests) and `README.md`.
+- **I-16. .NET 8 end of support.** Retargeted to `net10.0` / `net10.0-windows` (D-026).
+- **I-17. Recursive tree walks.** `CalculateSize`, VM conversion and duplicate collection are now iterative; a test covers a 200,000-level tree.
+- **Found during smoke testing:**
+  - Commands stayed disabled after a scan finished until the next mouse or keyboard input, because WPF's `CommandManager` doesn't requery by itself. Fixed with `InvalidateRequerySuggested()` on loading-state changes.
+  - "Not scanned" reported NTFS metadata on an empty 4 TB drive. The threshold is now relative to capacity (D-025).
 
-### Performance / scalability
-- **I-4. Bar view is not virtualized.** `ItemsControl` inside a `ScrollViewer` (`ChartDiagramView.xaml:56-57`) creates a visual for every child. A folder with tens of thousands of files (caches, `node_modules`, mail stores) freezes the UI. Fix: use `ListBox`/`VirtualizingStackPanel`, or show the top N plus "Other".
-- **I-5. Whole tree materialized twice.** At peak, the domain tree and a full VM tree exist together. Every file VM carries pie geometry fields (arc points, label and tooltip coordinates) although at most 6 entities are drawn. Fix: create VMs lazily per displayed directory and move geometry out of the entity VM.
-- **I-6. Allocation-heavy enumeration.** `DirectoryInfo.GetFiles()`/`GetDirectories()` allocate full `FileInfo`/`DirectoryInfo` arrays per directory. `FileSystemEnumerable<T>` with a struct transform is much cheaper.
+### Partly fixed
+- **I-9. Scanned vs. used gap.** Drive rows and tooltips show "N GB not scanned". Still open: dedicated "Free" and "Not scanned" segments in the diagrams; a "Restart as administrator" action.
+- **I-12. Duplicates view limits.** Done: cancel, progress, summary (groups, files, reclaimable bytes), reveal A or B in Explorer. Still open: reuse the loaded tree instead of rescanning, duplicates *within* one folder, delete actions (Duplicates v2).
 
-### Correctness of numbers
-- **I-7. Logical sizes, not on-disk sizes.** Hard links (e.g. `C:\Windows\WinSxS`) are counted once per link; compressed and sparse files show full logical length. The scanned total therefore doesn't match "used space".
-- **I-8. OneDrive is skipped entirely (confirmed 2026-11-14).** The `%OneDrive%` root and all its subfolders carry the `ReparsePoint` attribute with no link type (cloud-files reparse tag, not a junction or symlink). The blanket reparse-point skip in `DirectoryTreeScanner.cs:74` therefore drops the whole OneDrive tree. Cloud-only files (attributes `RecallOnDataAccess | Offline | Sparse | ReparsePoint`, e.g. `0x401620`) report their full logical size although they use no local space. Hashing them in the duplicate finder would download them. Fix: skip only real links (`LinkTarget != null`); count cloud-only files as 0 bytes on disk; never open them for hashing.
-- **I-9. The scanned vs. used gap is invisible.** Space in inaccessible folders (without admin rights) and filesystem metadata isn't shown anywhere.
-
-### UX gaps
-- **I-10. No way to choose, cancel or rescan.** The scan starts fire-and-forget from the `MainViewModel` constructor (`MainViewModel.cs:53`) for all drives. No `CancellationToken` reaches the UI; there's no Rescan, folder or drive picker. `AnalyzeDriveAsync` exists but is unused.
-- **I-11. No scan progress.** Only an indeterminate bar is shown, and full scans can take minutes.
-- **I-12. Duplicates view limits.** It rescans both folders from disk instead of reusing the loaded tree. It has no cancel, progress or result actions (open, reveal, delete). The status counts rows, not groups or reclaimable bytes. It can't find duplicates *within* one folder.
-- **I-13. Minor UI.** Labels of small pie slices overlap. Bar width is fixed at 500 px regardless of window size (`PercentToWidthConverter.MaxWidth`). Toolbar buttons don't show the active view. Clicking a file or the "Other" slice does nothing.
-
-### Hygiene
-- **I-14. Dead code.** `Resources/Styles.xaml` is never merged into resources. `DefaultButtonStyle` in `App.xaml` is unused. `AnalyzeDriveAsync` is unused. `LastModified` is collected but never displayed.
-- **I-15. No tests and no README.** The Application layer is UI-agnostic and easy to test with temp directories.
-- **I-16. .NET 8 reached end of support on 2026-11-10.** The machine has the `WindowsDesktop.App 10.0.13` runtime but only a .NET 10 RC SDK. Install the .NET 10 GA SDK (current LTS) before retargeting.
-- **I-17. Recursive tree walks.** `CalculateSize`, `ConvertToViewModel` and `Flatten` recurse; this only matters for pathological depth. Low priority.
+### Open
+- **I-5. Whole tree materialized twice.** At peak, the domain tree and a full VM tree exist together. Every file VM carries pie geometry fields although at most 6 entities are drawn. Fix: create VMs lazily per displayed directory and move geometry out of the entity VM.
+- **I-7. Logical sizes, not on-disk sizes.** Hard links (e.g. `C:\Windows\WinSxS`) are counted once per link; compression, sparseness and cluster slack are ignored.
 
 ---
 
@@ -116,20 +133,20 @@ then add analysis features. Release engineering (installer, signing, auto-update
 unless the goal changes.
 
 ### Now — correctness & foundation
-- [ ] Retarget to `net10.0` / `net10.0-windows` (I-16).
-- [ ] Fix nested duplicates (I-1) — **before** adding any delete action.
-- [ ] Fix hover brush (I-2); index-based pie palette (I-3).
-- [ ] Virtualize or cap the bar view (I-4).
-- [ ] Remove dead code (I-14).
-- [ ] Add a `DiskAnalyze.Application.Tests` (xUnit) project for size calculation, reparse-point skipping and duplicate grouping, including the nested case. Delete actions planned below make this logic data-critical.
+- [x] Retarget to `net10.0` / `net10.0-windows` (I-16).
+- [x] Fix nested duplicates (I-1) — **before** adding any delete action.
+- [x] Fix hover brush (I-2); index-based pie palette (I-3).
+- [x] Virtualize the bar view (I-4).
+- [x] Remove dead code (I-14).
+- [x] Add a `DiskAnalyze.Application.Tests` (xUnit) project for size calculation, junction skipping, cloud attributes and duplicate grouping, including the nested case.
 
 ### Next — daily-use comfort
-- [ ] Scan target picker (drive list plus "Choose folder…"), **Rescan** and **Cancel** with a `CancellationToken` plumbed end to end (I-10).
-- [ ] Live progress: folders and files scanned, bytes, current path, elapsed time (I-11).
+- [x] Scan target picker (drive list plus "Folder…"), **Scan** (rescan) and **Cancel** with a `CancellationToken` plumbed end to end (I-10).
+- [x] Live progress: folders and files scanned, bytes, current path, elapsed time (I-11).
 - [ ] Clickable breadcrumb path; Back/Forward, including mouse X1/X2 buttons.
 - [ ] Context menu: Open, Copy path, **Delete to Recycle Bin** (with confirmation). Update sizes up the parent chain in place without a rescan.
-- [ ] Drive level: show "Free" and "Unscanned / inaccessible" (used − scanned) segments (I-9); add a "Restart as administrator" action.
-- [ ] Highlight the active view in the toolbar; hide labels for slices under ~4% (I-13).
+- [ ] Drive level: show "Free" and "Not scanned" segments in the diagrams (the "N GB not scanned" text is done, I-9); add a "Restart as administrator" action.
+- [x] Highlight the active view in the toolbar; hide labels for slices under 4% (I-13).
 
 ### Feature A — Folder content types (design: §6.1)
 Shows what each folder mostly holds: images, video, audio, documents, archives, code, apps, mixed.
@@ -150,14 +167,14 @@ A separate window for viewing photos, with filters such as sunsets, people, city
 ### Later — analysis features
 - [ ] **Largest files** flat list across the whole tree, with size/extension/age filters.
 - [ ] **Treemap** (squarified) and/or **sunburst** (2–3 levels at once): denser than a one-level pie. Reuses the A2 color modes.
-- [ ] **Old files**: filter by `LastModified` (data already collected).
+- [ ] **Old files**: filter by `LastModified` (data already collected and shown in tooltips).
 - [ ] **Cleanup suggestions**: `%TEMP%`, browser and package caches (`%LOCALAPPDATA%\NuGet`, npm), dev build output (`bin/`, `obj/`, `.vs/`, `node_modules/`), `Windows.old`, Recycle Bin, old items in Downloads.
 - [ ] **Snapshots & diff**: save a compact scan summary, compare with a later scan ("what grew since last week").
-- [ ] **Duplicates v2**: within a single folder or drive; reuse the loaded tree; partial-hash prefilter (first and last 64 KB) before the full hash; progress and cancel; reclaimable-space total; "keep one, recycle the rest" (I-12).
+- [ ] **Duplicates v2**: within a single folder or drive; reuse the loaded tree; partial-hash prefilter (first and last 64 KB) before the full hash; "keep one, recycle the rest" (rest of I-12).
 - [ ] Export the current view or list to CSV.
 
 ### Performance track (pick up when scans feel slow)
-- [ ] `FileSystemEnumerable<T>` with `EnumerationOptions { IgnoreInaccessible = true, AttributesToSkip = 0 }` (I-6).
+- [x] `FileSystemEnumerable<T>` with `EnumerationOptions { IgnoreInaccessible = true, AttributesToSkip = 0 }` (I-6).
 - [ ] Lazy VM creation; geometry out of the entity VM (I-5).
 - [ ] On-disk (allocated) size and hard-link de-duplication by file ID, optionally behind a setting (I-7).
 - [ ] Cache the last scan for an instant start and refresh in the background.
@@ -268,8 +285,9 @@ Format: **D-NNN — title** (date, status). Entries D-001…D-017 were reconstru
 the 2026-11-14 review; their "why" is inferred and may be corrected.
 
 **D-001 — Split into a UI-agnostic core and a WPF shell** (2026-06, accepted)
-Scanning, entities and duplicate detection live in `DiskAnalyze.Application` (`net8.0`, no WPF).
-Why: testable without UI; another front end stays possible. Trade-off: none significant.
+Scanning, entities and duplicate detection live in `DiskAnalyze.Application` (no WPF).
+Why: testable without UI (now covered by `DiskAnalyze.Application.Tests`); another front end stays
+possible. Trade-off: none significant.
 
 **D-002 — Hand-rolled MVVM, no framework, no DI container** (2026-06, accepted)
 `ViewModelBase`/`RelayCommand` are written in-house; services are wired in the `MainWindow` constructor.
@@ -277,47 +295,49 @@ Why: tiny app, zero dependencies. Revisit if the number of services grows (Commu
 `Microsoft.Extensions.Hosting` are the natural next step).
 
 **D-003 — Scan everything up front into an in-memory tree** (2026-06, accepted, revisit)
-All fixed drives are scanned at startup; navigation is then instant. Trade-off: long startup, high
-memory, no partial results (I-5, I-10).
+The whole target is scanned before display; navigation is then instant. Trade-off: high memory and no
+partial results (I-5). Startup cost is mitigated by target choice, cancel and progress (D-024).
 
 **D-004 — Parallel scanner on a `Channel` work queue** (2026-06, accepted)
 One worker per core reads directories from an unbounded channel and enqueues subdirectories; an
 `Interlocked` outstanding counter completes the channel when it reaches zero. Each directory is owned
 by exactly one worker, so `Children` needs no locks.
 
-**D-005 — Do not follow reparse points** (2026-06, accepted, revisit)
-Why: legacy junctions such as `C:\Users\All Users` create cycles and double counting. Trade-off: also
-skips OneDrive cloud folders (I-8, confirmed); narrow it to real links.
+**D-005 — Do not follow reparse points** (2026-06, superseded by D-022)
+Why: legacy junctions such as `C:\Users\All Users` create cycles and double counting. It also skipped
+OneDrive cloud folders (I-8).
 
 **D-006 — Inaccessible folders are skipped silently** (2026-06, accepted)
-Errors go only to `Debug.WriteLine`. Trade-off: the user can't see what was missed (I-9).
+Errors go only to `Debug.WriteLine`. The resulting gap is now surfaced per drive as "not scanned"
+(D-025).
 
 **D-007 — Directory sizes in a post-pass** (2026-06, accepted)
 `CalculateSize()` runs once after the scan instead of propagating sizes concurrently. Why: no
-synchronization on shared parents.
+synchronization on shared parents. Iterative since 2026-11-14 (I-17).
 
-**D-008 — Size means logical file length** (2026-06, accepted, revisit)
-Simple and fast; ignores compression, sparseness, cluster slack and hard links (I-7).
+**D-008 — Size means logical file length** (2026-06, accepted, revisit; amended by D-022)
+Simple and fast; ignores compression, sparseness, cluster slack and hard links (I-7). Exception:
+cloud-only files count as 0.
 
 **D-009 — Pie shows top 5 plus "Other"; bars show everything** (2026-06, accepted)
 Why: the pie stays readable, while the bar view gives the full list. "Other" is a synthetic VM
-holding its members, so "Show contents" works on it.
+holding its members, so "Show contents" works on it, and clicking it opens that list.
 
 **D-010 — Pie geometry in code-behind; hit test walks up to the owning DataContext** (2026-06, accepted)
 Geometry is computed in `CircularDiagramView` and stored on the entity VMs. Hit testing walks up from
 any visual to the element whose `DataContext` is an entity, because the tooltip and label overlay the
 slice; matching only `Path` caused a hover flicker loop.
 
-**D-011 — Stable name hash for colors** (2026-06, accepted, revisit)
-Uses a custom hash because `string.GetHashCode` is randomized per process. Trade-off: frequent
-collisions in the pie (I-3).
+**D-011 — Stable name hash for colors** (2026-06, superseded by D-023)
+Used a custom hash because `string.GetHashCode` is randomized per process; collided often in the pie (I-3).
 
-**D-012 — Drive "% used" comes from `DriveInfo`, not from the scanned total** (2026-06, accepted)
+**D-012 — Drive "% used" comes from `DriveInfo`, not from the scanned total** (2026-06, accepted; amended by D-025)
 Why: the scanned total omits inaccessible files, so it under-reports.
 
 **D-013 — Duplicate = same size + same extension + same SHA-256** (2026-06, accepted)
 The extension is part of the key, so identical content under different extensions isn't reported.
 Why: a cheap, very selective prefilter; hashing only runs on candidates present on both sides.
+Empty and cloud-only files are excluded (D-022).
 
 **D-014 — The duplicate finder scans folders independently** (2026-06, accepted, revisit)
 It works without the main scan and on any folder. Trade-off: repeated disk I/O (I-12).
@@ -330,7 +350,7 @@ Why: the empty pie showed through behind the progress bar at startup.
 
 **D-017 — "Show in Explorer": folders open, files are revealed selected** (2026-06-30, accepted)
 Uses `explorer.exe "<dir>"` or `explorer.exe /select,"<file>"`; the menu item is hidden for the
-synthetic "Other" slice. Failures are ignored (best effort).
+synthetic "Other" slice. Best effort. Shared via `ShellActions` since 2026-11-14.
 
 **D-018 — Project goal: personal tool; dev log in English** (2026-11-14, accepted, decided by owner)
 The roadmap prioritizes correctness, daily-use comfort and analysis features over packaging and
@@ -349,3 +369,39 @@ are not downloaded. Embeddings are cached in local SQLite. No cloud APIs, no fac
 arbitrary filters plus free-text search and near-duplicate detection from one model, private, free,
 and fast on the dev machine's GPU. Windows AI APIs were rejected because they need an NPU. Validate
 with spike B0 before committing to the full plan. Details: §6.2.
+
+**D-021 — Nested folders in duplicate search: "rest of outer" vs "inner"** (2026-11-14, accepted)
+When one folder contains the other, files under the inner folder are scanned on both sides; they are
+attributed to the inner side only. Pairs are reported between the inner folder and the rest of the
+outer folder, and duplicates purely within the inner folder are not reported (that is the
+within-folder search of Duplicates v2). Why: this matches what comparing `Photos` with `Photos\2020`
+means, and a physical file can never be reported as its own duplicate.
+
+**D-022 — Follow cloud reparse points; cloud-only files are 0 bytes and never opened** (2026-11-14, accepted)
+Directories are skipped only when `DirectoryInfo.LinkTarget != null` (symlinks, junctions, mount
+points). Reading it opens the reparse point itself, so it never triggers a download. Files with
+`RecallOnDataAccess`, `RecallOnOpen` or `Offline` count as 0 bytes because they use no local space,
+and they are excluded from hashing because reading them would download them. Empty files are also
+excluded from duplicates, since they free no space. Supersedes D-005; amends D-008.
+
+**D-023 — Segment colors by size rank** (2026-11-14, accepted)
+`ColorIndex` is the rank among displayed siblings (largest first) into an 8-color palette light
+enough for black labels; "Other" is gray. Every view sorts the same way, so an entity keeps its color
+across pie and bars, and the pie's top 5 never collide. Supersedes D-011. Feature A adds a
+"By content" mode (D-019).
+
+**D-024 — Scan targets and scan lifecycle** (2026-11-14, accepted)
+Targets are all fixed drives (under a synthetic "This PC" root), one drive, or a folder; a single
+target is the root itself, so "Up" stops there. The initial scan starts on the window's `Loaded`
+event, not in the VM constructor. Cancel keeps the previously shown results. Progress is polled from
+atomic counters every 200 ms; workers publish counters once per directory to avoid cross-core
+contention.
+
+**D-025 — "Not scanned" is shown only above 1% of drive capacity** (2026-11-14, accepted)
+Used minus scanned includes NTFS metadata, which grows with volume size: an empty 4 TB drive reports
+~25 GB used. Only a gap above 1% of capacity points at unreadable folders. Amends D-012.
+
+**D-026 — Target .NET 10 LTS** (2026-11-14, accepted)
+.NET 8 left support on 2026-11-10. There is no `global.json`, so any installed SDK ≥ 10 builds the
+solution; the dev machine currently builds with the .NET 11 RC SDK, which fetches the .NET 10
+reference packs. Installing the .NET 10 GA SDK is still recommended. Tests use xUnit 2.9.

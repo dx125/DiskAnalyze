@@ -4,29 +4,11 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:local="clr-namespace:DiskAnalyze.Views"
-             xmlns:converters="clr-namespace:DiskAnalyze.Converters"
              xmlns:viewModels="clr-namespace:DiskAnalyze.ViewModels"
              mc:Ignorable="d"
              d:DesignHeight="450" d:DesignWidth="800">
 
     <UserControl.Resources>
-        <converters:InvertibleBooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
-        <converters:ScaleMagnifierConverter x:Key="ScaleMagnifierConverter" />
-        <converters:FileSystemEntityToBrushConverter x:Key="FileSystemEntityToBrushConverter" />
-        <converters:FileSizeConverter x:Key="FileSizeConverter" />
-        <converters:PercentToWidthConverter x:Key="PercentToWidthConverter" />
-        <!-- Positions the directory arrow just inside the right end of the bar -->
-        <converters:PercentToWidthConverter x:Key="PercentToTranslateConverter" Offset="-14" />
-        <converters:BooleanToGridLengthConverter x:Key="BooleanToGridLengthConverter" />
-
-        <Style x:Key="ChartBarStyle" TargetType="Rectangle">
-            <Setter Property="Height" Value="25" />
-            <Setter Property="RadiusX" Value="3" />
-            <Setter Property="RadiusY" Value="3" />
-            <Setter Property="Stroke" Value="White" />
-            <Setter Property="StrokeThickness" Value="1" />
-        </Style>
-
         <Style x:Key="ChartTextStyle" TargetType="TextBlock">
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="FontSize" Value="12" />
@@ -41,7 +23,7 @@
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="{Binding HasContents, Converter={StaticResource BooleanToGridLengthConverter}, ConverterParameter=220}" />
+            <ColumnDefinition Width="{Binding HasContents, Converter={StaticResource BooleanToGridLengthConverter}, ConverterParameter=240}" />
         </Grid.ColumnDefinitions>
 
         <!-- Navigation Controls -->
@@ -52,50 +34,71 @@
             <TextBlock Text="{Binding CurrentPath}" VerticalAlignment="Center" />
         </StackPanel>
 
-        <!-- Chart Area -->
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="10">
-            <ItemsControl ItemsSource="{Binding DisplayedEntities}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate DataType="{x:Type viewModels:FileSystemEntityViewModel}">
-                        <Grid Margin="0,5">
-                            <Grid.RenderTransform>
-                                <ScaleTransform
-                                    ScaleX="{Binding IsDirectory, Converter={StaticResource ScaleMagnifierConverter}, ConverterParameter=1.02}"
-                                    ScaleY="{Binding IsDirectory, Converter={StaticResource ScaleMagnifierConverter}, ConverterParameter=1.02}"
-                                    CenterX="0" CenterY="12.5" />
-                            </Grid.RenderTransform>
+        <!-- Chart Area: virtualized, so folders with tens of thousands of entries stay responsive -->
+        <ItemsControl Grid.Row="1" Margin="10" ItemsSource="{Binding DisplayedEntities}"
+                      VirtualizingPanel.IsVirtualizing="True"
+                      VirtualizingPanel.VirtualizationMode="Recycling"
+                      VirtualizingPanel.ScrollUnit="Pixel">
+            <ItemsControl.Template>
+                <ControlTemplate TargetType="ItemsControl">
+                    <ScrollViewer CanContentScroll="True" Focusable="False"
+                                  VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <ItemsPresenter />
+                    </ScrollViewer>
+                </ControlTemplate>
+            </ItemsControl.Template>
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <VirtualizingStackPanel />
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="{x:Type viewModels:FileSystemEntityViewModel}">
+                    <!-- The whole row is clickable and carries the context menu -->
+                    <Border x:Name="Row" Background="Transparent" Padding="0,3" CornerRadius="3"
+                            Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                        <Border.InputBindings>
+                            <MouseBinding MouseAction="LeftClick"
+                                          Command="{Binding DataContext.NavigateToDirectoryCommand,
+                                                    RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                          CommandParameter="{Binding}" />
+                        </Border.InputBindings>
+                        <Border.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Show contents"
+                                          Command="{Binding PlacementTarget.Tag.ShowContentsCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                          CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                <MenuItem Header="Show in Explorer"
+                                          Command="{Binding PlacementTarget.Tag.ShowInExplorerCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                          CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                          Visibility="{Binding PlacementTarget.DataContext.IsOtherCategory, RelativeSource={RelativeSource AncestorType=ContextMenu}, Converter={StaticResource BooleanToVisibilityConverter}, ConverterParameter=Invert}" />
+                            </ContextMenu>
+                        </Border.ContextMenu>
 
+                        <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="100" />
+                                <ColumnDefinition Width="90" />
+                                <ColumnDefinition Width="20" />
                             </Grid.ColumnDefinitions>
 
-                            <Grid Grid.Column="0">
-                                <Rectangle Style="{StaticResource ChartBarStyle}"
-                                           Fill="{Binding Converter={StaticResource FileSystemEntityToBrushConverter}}"
-                                           Width="{Binding PercentageOfTotal, Converter={StaticResource PercentToWidthConverter}}"
-                                           HorizontalAlignment="Left"
-                                           Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
-                                    <Rectangle.InputBindings>
-                                        <MouseBinding MouseAction="LeftClick"
-                                                      Command="{Binding DataContext.NavigateToDirectoryCommand,
-                                                                RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                      CommandParameter="{Binding}" />
-                                    </Rectangle.InputBindings>
-                                    <Rectangle.ContextMenu>
-                                        <ContextMenu>
-                                            <MenuItem Header="Show contents"
-                                                      Command="{Binding PlacementTarget.Tag.ShowContentsCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                      CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
-                                            <MenuItem Header="Show in Explorer"
-                                                      Command="{Binding PlacementTarget.Tag.ShowInExplorerCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                      CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                      Visibility="{Binding PlacementTarget.DataContext.IsOtherCategory, RelativeSource={RelativeSource AncestorType=ContextMenu}, Converter={StaticResource BooleanToVisibilityConverter}, ConverterParameter=Invert}" />
-                                        </ContextMenu>
-                                    </Rectangle.ContextMenu>
+                            <!-- Bar track: the bar takes PercentageOfTotal of the available width -->
+                            <Grid Grid.Column="0" Height="25">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="{Binding PercentageOfTotal, Converter={StaticResource PercentToStarConverter}}" />
+                                    <ColumnDefinition Width="{Binding PercentageOfTotal, Converter={StaticResource PercentToStarConverter}, ConverterParameter=Remainder}" />
+                                </Grid.ColumnDefinitions>
+
+                                <Rectangle Grid.Column="0" MinWidth="3" RadiusX="3" RadiusY="3" Stroke="White" StrokeThickness="1">
+                                    <Rectangle.Fill>
+                                        <MultiBinding Converter="{StaticResource EntityBrushConverter}">
+                                            <Binding Path="ColorIndex" />
+                                            <Binding Path="IsOtherCategory" />
+                                        </MultiBinding>
+                                    </Rectangle.Fill>
                                 </Rectangle>
 
-                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <StackPanel Grid.Column="0" Grid.ColumnSpan="2" Orientation="Horizontal" VerticalAlignment="Center">
                                     <TextBlock Text="{Binding Name}" Style="{StaticResource ChartTextStyle}" />
                                     <TextBlock Text="{Binding UsageInfo}" Style="{StaticResource ChartTextStyle}" Foreground="#333"
                                                Visibility="{Binding IsDrive, Converter={StaticResource BooleanToVisibilityConverter}}" />
@@ -105,19 +108,24 @@
                             <TextBlock Grid.Column="1" Text="{Binding Size, Converter={StaticResource FileSizeConverter}}"
                                        HorizontalAlignment="Right" VerticalAlignment="Center" />
 
-                            <!-- Clickable Indicator for Directories -->
-                            <Path Grid.Column="0" Data="M0,0 L6,6 L0,12 Z" Fill="White"
-                                  Visibility="{Binding IsDirectory, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                  HorizontalAlignment="Left" VerticalAlignment="Center">
-                                <Path.RenderTransform>
-                                    <TranslateTransform X="{Binding PercentageOfTotal, Converter={StaticResource PercentToTranslateConverter}}" Y="0" />
-                                </Path.RenderTransform>
-                            </Path>
+                            <!-- Drill-down marker for directories, in its own column so it never covers the label -->
+                            <Path Grid.Column="2" Data="M0,0 L5,5 L0,10" Stroke="#888" StrokeThickness="1.5"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  Visibility="{Binding IsDirectory, Converter={StaticResource BooleanToVisibilityConverter}}" />
                         </Grid>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </ScrollViewer>
+                    </Border>
+
+                    <DataTemplate.Triggers>
+                        <Trigger SourceName="Row" Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Row" Property="Background" Value="#14000000" />
+                        </Trigger>
+                        <DataTrigger Binding="{Binding IsDirectory}" Value="True">
+                            <Setter TargetName="Row" Property="Cursor" Value="Hand" />
+                        </DataTrigger>
+                    </DataTemplate.Triggers>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
 
         <!-- Contents Side Panel -->
         <local:SegmentContentsView Grid.Row="0" Grid.RowSpan="2" Grid.Column="1" />

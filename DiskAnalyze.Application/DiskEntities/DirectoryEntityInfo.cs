@@ -14,22 +14,44 @@
             Children = new List<BaseFileSystemEntity>();
         }
 
-        public static DirectoryEntityInfo CreateFromDirectory(DirectoryInfo directory)
-        {
-            return new DirectoryEntityInfo(directory.Name, directory.FullName, directory.LastWriteTime);
-        }
-
+        /// <summary>
+        /// Computes <see cref="Size"/> for this directory and every directory below it.
+        /// Iterative, so arbitrarily deep trees can't overflow the stack.
+        /// </summary>
         public long CalculateSize()
         {
-            long total = 0;
+            // Pre-order walk: every directory is listed after its parent...
+            var directories = new List<DirectoryEntityInfo>();
+            var pending = new Stack<DirectoryEntityInfo>();
+            pending.Push(this);
 
-            foreach (var child in Children)
+            while (pending.Count > 0)
             {
-                total += child is DirectoryEntityInfo dir ? dir.CalculateSize() : child.Size;
+                var directory = pending.Pop();
+                directories.Add(directory);
+
+                foreach (var child in directory.Children)
+                {
+                    if (child is DirectoryEntityInfo subdirectory)
+                    {
+                        pending.Push(subdirectory);
+                    }
+                }
             }
 
-            _size = total;
-            return total;
+            // ...so walking the list backwards sizes all children before their parent.
+            for (int i = directories.Count - 1; i >= 0; i--)
+            {
+                long total = 0;
+                foreach (var child in directories[i].Children)
+                {
+                    total += child.Size;
+                }
+
+                directories[i]._size = total;
+            }
+
+            return _size;
         }
     }
 }

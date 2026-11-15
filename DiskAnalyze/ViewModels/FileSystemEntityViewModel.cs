@@ -12,6 +12,8 @@ namespace DiskAnalyze.ViewModels
         private long _size;
         private bool _isHovered;
         private bool _isOtherCategory;
+        private int _colorIndex;
+        private double _percentageOfTotal;
         private Point _arcStartPoint;
         private Point _arcEndPoint;
         private bool _isLargeArc;
@@ -52,13 +54,31 @@ namespace DiskAnalyze.ViewModels
 
         public string DisplayName => IsOtherCategory ? "Other" : Name;
 
+        /// <summary>True for a cloud-only placeholder file (e.g. OneDrive "online-only"): it uses no local space.</summary>
+        public bool IsCloudOnly { get; set; }
+
         /// <summary>True for top-level disk entities (C:\, D:\, …), which carry drive space-usage info.</summary>
         public bool IsDrive { get; set; }
 
         /// <summary>Percentage of the drive's total capacity that is in use. Only meaningful when <see cref="IsDrive"/>.</summary>
         public double DiskUsagePercent { get; set; }
 
-        public string UsageInfo => IsDrive ? $"{DiskUsagePercent:0.#}% used" : string.Empty;
+        /// <summary>Used drive space the scan couldn't account for (e.g. folders without access). Drives only.</summary>
+        public long UnscannedBytes { get; set; }
+
+        public string UsageInfo
+        {
+            get
+            {
+                if (!IsDrive)
+                    return string.Empty;
+
+                var usage = $"{DiskUsagePercent:0.#}% used";
+                return UnscannedBytes > 0 ? $"{usage} · {FileSizeFormatter.Format(UnscannedBytes)} not scanned" : usage;
+            }
+        }
+
+        public string ModifiedInfo => IsOtherCategory ? string.Empty : $"Modified {LastModified:yyyy-MM-dd HH:mm}";
 
         public bool IsHovered
         {
@@ -72,9 +92,20 @@ namespace DiskAnalyze.ViewModels
             set => SetProperty(ref _isOtherCategory, value);
         }
 
+        /// <summary>Size rank among the displayed siblings; selects the segment color.</summary>
+        public int ColorIndex
+        {
+            get => _colorIndex;
+            set => SetProperty(ref _colorIndex, value);
+        }
+
         public DirectoryEntityViewModel? Parent { get; set; }
 
-        public double PercentageOfTotal { get; set; }
+        public double PercentageOfTotal
+        {
+            get => _percentageOfTotal;
+            set => SetProperty(ref _percentageOfTotal, value);
+        }
 
         // Pie-sector geometry, computed by CircularDiagramView for the currently displayed entities.
         public Point ArcStartPoint

@@ -4,18 +4,9 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:local="clr-namespace:DiskAnalyze.Views"
-             xmlns:converters="clr-namespace:DiskAnalyze.Converters"
              xmlns:viewModels="clr-namespace:DiskAnalyze.ViewModels"
              mc:Ignorable="d"
              d:DesignHeight="450" d:DesignWidth="800">
-
-    <UserControl.Resources>
-        <converters:InvertibleBooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
-        <converters:ScaleMagnifierConverter x:Key="ScaleMagnifierConverter" />
-        <converters:FileSystemEntityToBrushConverter x:Key="FileSystemEntityToBrushConverter" />
-        <converters:FileSizeConverter x:Key="FileSizeConverter" />
-        <converters:BooleanToGridLengthConverter x:Key="BooleanToGridLengthConverter" />
-    </UserControl.Resources>
 
     <Grid>
         <Grid.RowDefinitions>
@@ -24,7 +15,7 @@
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="{Binding HasContents, Converter={StaticResource BooleanToGridLengthConverter}, ConverterParameter=220}" />
+            <ColumnDefinition Width="{Binding HasContents, Converter={StaticResource BooleanToGridLengthConverter}, ConverterParameter=240}" />
         </Grid.ColumnDefinitions>
 
         <!-- Navigation Controls -->
@@ -64,9 +55,15 @@
                                         </Canvas.RenderTransform>
 
                                         <!-- Sector Path -->
-                                        <Path x:Name="SectorPath" Fill="{Binding Converter={StaticResource FileSystemEntityToBrushConverter}}"
-                                              Stroke="White" StrokeThickness="1"
+                                        <Path x:Name="SectorPath" Stroke="White" StrokeThickness="1"
                                               Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                                            <Path.Fill>
+                                                <MultiBinding Converter="{StaticResource EntityBrushConverter}">
+                                                    <Binding Path="ColorIndex" />
+                                                    <Binding Path="IsOtherCategory" />
+                                                    <Binding Path="IsHovered" />
+                                                </MultiBinding>
+                                            </Path.Fill>
                                             <Path.ContextMenu>
                                                 <ContextMenu>
                                                     <MenuItem Header="Show contents"
@@ -95,20 +92,23 @@
                                             </Path.Data>
                                         </Path>
 
-                                        <!-- Name Label -->
+                                        <!-- Name Label: hidden on slices too thin to hold it; the hover tooltip still names them -->
                                         <TextBlock Text="{Binding DisplayName}" TextWrapping="Wrap" TextAlignment="Center"
                                                    Canvas.Left="{Binding LabelX}" Canvas.Top="{Binding LabelY}"
-                                                   Width="60" Height="40" />
+                                                   Width="60" Height="40"
+                                                   Visibility="{Binding PercentageOfTotal, Converter={StaticResource PercentThresholdToVisibilityConverter}, ConverterParameter=4}" />
 
                                         <!-- Size Info on Hover -->
                                         <Border Background="White" BorderBrush="Black" BorderThickness="1" CornerRadius="3"
                                                 Visibility="{Binding IsHovered, Converter={StaticResource BooleanToVisibilityConverter}}"
                                                 Canvas.Left="{Binding TooltipX}" Canvas.Top="{Binding TooltipY}">
                                             <StackPanel Margin="5">
-                                                <TextBlock Text="{Binding Name}" FontWeight="Bold" />
+                                                <TextBlock Text="{Binding DisplayName}" FontWeight="Bold" />
                                                 <TextBlock Text="{Binding Size, Converter={StaticResource FileSizeConverter}}" />
                                                 <TextBlock Text="{Binding UsageInfo}" Foreground="#555"
                                                            Visibility="{Binding IsDrive, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                <TextBlock Text="{Binding ModifiedInfo}" Foreground="#555"
+                                                           Visibility="{Binding IsOtherCategory, Converter={StaticResource BooleanToVisibilityConverter}, ConverterParameter=Invert}" />
                                             </StackPanel>
                                         </Border>
                                     </Canvas>

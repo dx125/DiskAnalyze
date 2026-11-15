@@ -100,11 +100,16 @@ namespace DiskAnalyze.Views
 
             if (DataContext is CircularDiagramViewModel viewModel && e.LeftButton == MouseButtonState.Pressed)
             {
-                var hitEntity = HitTestEntity(e.GetPosition(CircularDiagramCanvas));
-
-                if (hitEntity is DirectoryEntityViewModel directory)
+                switch (HitTestEntity(e.GetPosition(CircularDiagramCanvas)))
                 {
-                    viewModel.NavigateToDirectoryCommand.Execute(directory);
+                    case DirectoryEntityViewModel directory:
+                        viewModel.NavigateToDirectoryCommand.Execute(directory);
+                        break;
+
+                    // "Other" can't be entered like a folder, so list its members in the side panel instead.
+                    case OtherCategoryViewModel other:
+                        viewModel.ShowContentsCommand.Execute(other);
+                        break;
                 }
             }
         }

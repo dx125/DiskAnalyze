@@ -18,6 +18,11 @@ namespace DiskAnalyze.Application.Duplicates
 
         public IReadOnlyList<FileEntityInfo> RightFiles { get; }
 
+        public int FileCount => LeftFiles.Count + RightFiles.Count;
+
+        /// <summary>Bytes freed by keeping a single copy and removing all the others.</summary>
+        public long ReclaimableBytes => Size * (FileCount - 1);
+
         public DuplicateFileGroup(long size, string extension, string contentHash,
             IReadOnlyList<FileEntityInfo> leftFiles, IReadOnlyList<FileEntityInfo> rightFiles)
         {

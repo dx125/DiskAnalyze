@@ -3,13 +3,15 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             xmlns:converters="clr-namespace:DiskAnalyze.Converters"
              mc:Ignorable="d"
              d:DesignHeight="450" d:DesignWidth="800">
 
     <UserControl.Resources>
-        <converters:InvertibleBooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
-        <converters:FileSizeConverter x:Key="FileSizeConverter" />
+        <!-- One instance per row; its DataContext is the row's DuplicateMatchViewModel -->
+        <ContextMenu x:Key="RowContextMenu" x:Shared="False">
+            <MenuItem Header="Show file A in Explorer" Command="{Binding ShowLeftInExplorerCommand}" />
+            <MenuItem Header="Show file B in Explorer" Command="{Binding ShowRightInExplorerCommand}" />
+        </ContextMenu>
     </UserControl.Resources>
 
     <Grid Margin="10">
@@ -55,14 +57,20 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <Button Grid.Column="0" Content="Find Duplicates" Padding="14,4"
-                    Command="{Binding FindDuplicatesCommand}" />
-            <TextBlock Grid.Column="1" Text="{Binding StatusMessage}" VerticalAlignment="Center" Margin="12,0,0,0" />
+            <StackPanel Grid.Column="0" Orientation="Horizontal">
+                <Button Content="Find Duplicates" Padding="14,4"
+                        Command="{Binding FindDuplicatesCommand}" />
+                <Button Content="Cancel" Padding="14,4" Margin="6,0,0,0"
+                        Command="{Binding CancelCommand}"
+                        Visibility="{Binding IsScanning, Converter={StaticResource BooleanToVisibilityConverter}}" />
+            </StackPanel>
+            <TextBlock Grid.Column="1" Text="{Binding StatusMessage}" VerticalAlignment="Center"
+                       Margin="12,0,0,0" TextTrimming="CharacterEllipsis" />
             <ProgressBar Grid.Column="2" IsIndeterminate="True" Width="120" Height="14"
                          Visibility="{Binding IsScanning, Converter={StaticResource BooleanToVisibilityConverter}}" />
         </Grid>
 
-        <!-- Side-by-side results -->
+        <!-- Side-by-side results; rows of the same duplicate group share a background -->
         <DataGrid Grid.Row="3" ItemsSource="{Binding Matches}"
                   AutoGenerateColumns="False" IsReadOnly="True"
                   HeadersVisibility="Column" GridLinesVisibility="All"
@@ -79,6 +87,7 @@
             </DataGrid.Columns>
             <DataGrid.RowStyle>
                 <Style TargetType="DataGridRow">
+                    <Setter Property="ContextMenu" Value="{StaticResource RowContextMenu}" />
                     <Setter Property="ToolTip">
                         <Setter.Value>
                             <MultiBinding StringFormat="A: {0}&#x0a;B: {1}">
@@ -87,6 +96,11 @@
                             </MultiBinding>
                         </Setter.Value>
                     </Setter>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsAlternateGroup}" Value="True">
+                            <Setter Property="Background" Value="#F2F5FA" />
+                        </DataTrigger>
+                    </Style.Triggers>
                 </Style>
             </DataGrid.RowStyle>
         </DataGrid>

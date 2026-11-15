@@ -1,4 +1,6 @@
-﻿namespace DiskAnalyze.Application.DiskEntities
+﻿using DiskAnalyze.Application.AnalyzeService;
+
+namespace DiskAnalyze.Application.DiskEntities
 {
     public class FileEntityInfo : BaseFileSystemEntity
     {
@@ -6,17 +8,26 @@
 
         public string Extension { get; }
 
+        /// <summary>Bytes the file occupies locally: 0 for cloud-only placeholders.</summary>
         public override long Size { get; }
 
-        public FileEntityInfo(string name, string path, long size, string extension, DateTime lastModified) : base (name, path, lastModified)
+        /// <summary>The content lives only in the cloud; reading the file would download it.</summary>
+        public bool IsCloudOnly { get; }
+
+        public FileEntityInfo(string name, string path, long size, string extension, DateTime lastModified, bool isCloudOnly = false)
+            : base(name, path, lastModified)
         {
             Size = size;
             Extension = extension;
+            IsCloudOnly = isCloudOnly;
         }
 
-        public static FileEntityInfo CreateFromFile(System.IO.FileInfo file)
+        public static FileEntityInfo CreateFromFile(FileInfo file)
         {
-            return new FileEntityInfo(file.Name, file.FullName, file.Length, file.Extension, file.LastWriteTime);
+            bool isCloudOnly = CloudFiles.IsCloudOnly(file.Attributes);
+
+            return new FileEntityInfo(file.Name, file.FullName, isCloudOnly ? 0 : file.Length, file.Extension,
+                file.LastWriteTime, isCloudOnly);
         }
     }
 }

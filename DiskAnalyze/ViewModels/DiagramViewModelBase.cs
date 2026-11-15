@@ -1,7 +1,6 @@
 using DiskAnalyze.Core;
+using DiskAnalyze.Services;
 using System.Collections.ObjectModel;
-using System.Diagnostics;
-using System.IO;
 using System.Windows.Input;
 
 namespace DiskAnalyze.ViewModels
@@ -17,6 +16,7 @@ namespace DiskAnalyze.ViewModels
         private bool _canNavigateUp;
         private string _currentPath;
         private FileSystemEntityViewModel? _contentsTarget;
+        private IReadOnlyList<FileSystemEntityViewModel> _segmentContents;
 
         public DirectoryEntityViewModel CurrentDirectory
         {
@@ -25,7 +25,10 @@ namespace DiskAnalyze.ViewModels
             {
                 if (SetProperty(ref _currentDirectory, value))
                 {
-                    DisplayedEntities = new ObservableCollection<FileSystemEntityViewModel>(CreateDisplayedEntities());
+                    var entities = CreateDisplayedEntities();
+                    AssignColors(entities);
+
+                    DisplayedEntities = new ObservableCollection<FileSystemEntityViewModel>(entities);
                     CanNavigateUp = _currentDirectory.Parent != null;
                     CurrentPath = _currentDirectory.FullPath;
 
@@ -63,15 +66,10 @@ namespace DiskAnalyze.ViewModels
             {
                 if (SetProperty(ref _contentsTarget, value))
                 {
-                    SegmentContents.Clear();
-
-                    if (value != null)
-                    {
-                        foreach (var child in GetImmediateChildren(value).OrderByDescending(c => c.Size))
-                        {
-                            SegmentContents.Add(child);
-                        }
-                    }
+                    // Replaced wholesale: adding thousands of items one by one would raise a change event per item.
+                    SegmentContents = value == null
+                        ? Array.Empty<FileSystemEntityViewModel>()
+                        : GetImmediateChildren(value).OrderByDescending(c => c.Size).ToList();
 
                     RaisePropertyChanged(nameof(ContentsTitle));
                     RaisePropertyChanged(nameof(HasContents));
@@ -80,15 +78,20 @@ namespace DiskAnalyze.ViewModels
         }
 
         /// <summary>Immediate files and folders of <see cref="ContentsTarget"/>, sorted largest first.</summary>
-        public ObservableCollection<FileSystemEntityViewModel> SegmentContents { get; }
+        public IReadOnlyList<FileSystemEntityViewModel> SegmentContents
+        {
+            get => _segmentContents;
+            private set => SetProperty(ref _segmentContents, value);
+        }
 
         public bool HasContents => _contentsTarget != null;
 
-        public string ContentsTitle => _contentsTarget != null ? $"Contents of \"{_contentsTarget.Name}\"" : "Contents";
+        public string ContentsTitle => _contentsTarget != null ? $"Contents of \"{_contentsTarget.DisplayName}\"" : "Contents";
 
         public ICommand NavigateToDirectoryCommand { get; }
         public ICommand NavigateUpCommand { get; }
         public ICommand ShowContentsCommand { get; }
+        public ICommand HideContentsCommand { get; }
         public ICommand ShowInExplorerCommand { get; }
 
         protected DiagramViewModelBase()
@@ -96,11 +99,12 @@ namespace DiskAnalyze.ViewModels
             _currentDirectory = new DirectoryEntityViewModel();
             _displayedEntities = new ObservableCollection<FileSystemEntityViewModel>();
             _currentPath = string.Empty;
-            SegmentContents = new ObservableCollection<FileSystemEntityViewModel>();
+            _segmentContents = Array.Empty<FileSystemEntityViewModel>();
 
             NavigateToDirectoryCommand = new RelayCommand(NavigateToDirectory, p => p is DirectoryEntityViewModel);
             NavigateUpCommand = new RelayCommand(NavigateUp, () => CanNavigateUp);
             ShowContentsCommand = new RelayCommand(ShowContents, p => p is FileSystemEntityViewModel);
+            HideContentsCommand = new RelayCommand(() => ContentsTarget = null);
             ShowInExplorerCommand = new RelayCommand(ShowInExplorer, CanShowInExplorer);
         }
 
@@ -116,6 +120,16 @@ namespace DiskAnalyze.ViewModels
             foreach (var item in items)
             {
                 item.PercentageOfTotal = totalSize > 0 ? (double)item.Size / totalSize * 100 : 0;
+            }
+        }
+
+        // Colors follow the size rank. Every view sorts siblings the same way (largest first), so an
+        // entity keeps its color across the pie and the bars, and the top pie slices never share one.
+        private static void AssignColors(IReadOnlyList<FileSystemEntityViewModel> entities)
+        {
+            for (int i = 0; i < entities.Count; i++)
+            {
+                entities[i].ColorIndex = i;
             }
         }
 
@@ -145,23 +159,11 @@ namespace DiskAnalyze.ViewModels
             parameter is FileSystemEntityViewModel { IsOtherCategory: false } entity
             && !string.IsNullOrEmpty(entity.FullPath);
 
-        private void ShowInExplorer(object? parameter)
+        private static void ShowInExplorer(object? parameter)
         {
-            if (parameter is not FileSystemEntityViewModel entity || string.IsNullOrEmpty(entity.FullPath))
-                return;
-
-            try
+            if (parameter is FileSystemEntityViewModel { IsOtherCategory: false } entity)
             {
-                // Open the folder directly; for files, reveal them selected inside their parent folder.
-                var arguments = entity.IsDirectory && Directory.Exists(entity.FullPath)
-                    ? $"\"{entity.FullPath}\""
-                    : $"/select,\"{entity.FullPath}\"";
-
-                Process.Start(new ProcessStartInfo("explorer.exe", arguments) { UseShellExecute = true });
-            }
-            catch
-            {
-                // Revealing in Explorer is best-effort; ignore failures (e.g. path no longer exists).
+                ShellActions.ShowInExplorer(entity.FullPath);
             }
         }
 

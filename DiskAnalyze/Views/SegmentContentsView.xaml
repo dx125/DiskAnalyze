@@ -3,15 +3,9 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             xmlns:converters="clr-namespace:DiskAnalyze.Converters"
              xmlns:viewModels="clr-namespace:DiskAnalyze.ViewModels"
              mc:Ignorable="d"
-             d:DesignHeight="450" d:DesignWidth="220">
-
-    <UserControl.Resources>
-        <converters:InvertibleBooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
-        <converters:FileSizeConverter x:Key="FileSizeConverter" />
-    </UserControl.Resources>
+             d:DesignHeight="450" d:DesignWidth="240">
 
     <Border BorderBrush="#DDD" BorderThickness="1,0,0,0"
             Visibility="{Binding HasContents, Converter={StaticResource BooleanToVisibilityConverter}}">
@@ -21,8 +15,12 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <TextBlock Grid.Row="0" Text="{Binding ContentsTitle}" FontWeight="Bold"
-                       TextWrapping="Wrap" Margin="0,0,0,8" />
+            <DockPanel Grid.Row="0" Margin="0,0,0,8">
+                <Button DockPanel.Dock="Right" Content="✕" VerticalAlignment="Top" Padding="6,0"
+                        Background="Transparent" BorderThickness="0" ToolTip="Close"
+                        Command="{Binding HideContentsCommand}" />
+                <TextBlock Text="{Binding ContentsTitle}" FontWeight="Bold" TextWrapping="Wrap" />
+            </DockPanel>
 
             <ListBox Grid.Row="1" ItemsSource="{Binding SegmentContents}"
                      BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
@@ -38,12 +36,24 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
+                            <Grid.ToolTip>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding FullPath}" />
+                                    <TextBlock Text="{Binding ModifiedInfo}" Foreground="#555" />
+                                </StackPanel>
+                            </Grid.ToolTip>
 
-                            <TextBlock Grid.Column="0" Text="{Binding Name}" TextTrimming="CharacterEllipsis"
-                                       ToolTip="{Binding FullPath}" />
-                            <TextBlock Grid.Column="1" Text="{Binding Size, Converter={StaticResource FileSizeConverter}}"
-                                       Margin="8,0,0,0" Foreground="#555" />
+                            <TextBlock Grid.Column="0" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                            <TextBlock x:Name="SizeText" Grid.Column="1" Margin="8,0,0,0" Foreground="#555"
+                                       Text="{Binding Size, Converter={StaticResource FileSizeConverter}}" />
                         </Grid>
+                        <DataTemplate.Triggers>
+                            <!-- Online-only files take no local space; say so instead of showing "0 B" -->
+                            <DataTrigger Binding="{Binding IsCloudOnly}" Value="True">
+                                <Setter TargetName="SizeText" Property="Text" Value="cloud only" />
+                                <Setter TargetName="SizeText" Property="FontStyle" Value="Italic" />
+                            </DataTrigger>
+                        </DataTemplate.Triggers>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
